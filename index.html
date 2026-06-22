@@ -584,6 +584,7 @@
       </button>
     </div>
     <div class="sidebar-clock" id="clock"></div>
+    <button class="sidebar-settings" id="sync-status-btn" onclick="manualSync()" title="同步狀態" style="display:none;">⏸</button>
     <button class="sidebar-settings" onclick="openSettingsModal()" title="設定">⚙</button>
   </div>
 
@@ -1129,6 +1130,24 @@ A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--bord
       <button class="modal-close" onclick="closeModal('settings-modal')">×</button>
     </div>
     <div class="modal-body">
+      <div class="variant-section">
+        <h4>☁ 雲端同步 (Google Sheets)</h4>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:10px;">
+          設定後，所有資料會自動同步到 Google Sheets。多裝置共用、永不遺失。
+        </div>
+        <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">Google Apps Script URL</label>
+        <input type="text" id="set-sync-url" placeholder="https://script.google.com/macros/s/.../exec" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="set-sync-enabled" style="margin:0;">
+            <span>啟用自動同步</span>
+          </label>
+          <button class="btn btn-outline btn-sm" onclick="testSyncConnection()" id="sync-test-btn">🔌 測試連線</button>
+          <button class="btn btn-gold btn-sm" onclick="manualSync()">🔄 立刻同步</button>
+        </div>
+        <div id="sync-status-info" style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6;"></div>
+      </div>
+
       <div class="variant-section">
         <h4>☁ Cloudinary 圖床設定</h4>
         <div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:10px;">
@@ -2631,13 +2650,21 @@ document.addEventListener('keydown', e => {
 });
 
 // ======================== SETTINGS ========================
-let appSettings = load('pos_settings', { cloudinaryCloud: '', cloudinaryPreset: '' });
+let appSettings = load('pos_settings', {
+  cloudinaryCloud: '',
+  cloudinaryPreset: '',
+  syncUrl: 'https://script.google.com/macros/s/AKfycbzmoUAGv6uzNgVBs6biNRkEY0EeLkujXzVogUQw3M2LnppybOTotWpDc9Fk8BeKFWlC/exec',
+  syncEnabled: false
+});
 
 function openSettingsModal() {
   document.getElementById('set-cloudinary-name').value = appSettings.cloudinaryCloud || '';
   document.getElementById('set-cloudinary-preset').value = appSettings.cloudinaryPreset || '';
+  document.getElementById('set-sync-url').value = appSettings.syncUrl || '';
+  document.getElementById('set-sync-enabled').checked = !!appSettings.syncEnabled;
   updateCloudinaryStatus();
   refreshStorageInfo();
+  updateSyncStatusInfo();
   openModal('settings-modal');
 }
 
@@ -2651,13 +2678,266 @@ function updateCloudinaryStatus() {
 }
 
 function saveSettings() {
+  const oldEnabled = appSettings.syncEnabled;
   appSettings.cloudinaryCloud = document.getElementById('set-cloudinary-name').value.trim();
   appSettings.cloudinaryPreset = document.getElementById('set-cloudinary-preset').value.trim();
+  appSettings.syncUrl = document.getElementById('set-sync-url').value.trim();
+  appSettings.syncEnabled = document.getElementById('set-sync-enabled').checked;
   save('pos_settings', appSettings);
   updateCloudinaryStatus();
   closeModal('settings-modal');
   toast('設定已儲存', 'success');
+
+  // 同步開關變動 → 啟動/停止同步
+  if (!oldEnabled && appSettings.syncEnabled) {
+    startSync();
+  } else if (oldEnabled && !appSettings.syncEnabled) {
+    stopSync();
+  }
 }
+
+// ======================== GOOGLE SHEETS SYNC ========================
+let syncState = {
+  status: 'idle',    // idle | uploading | downloading | error | offline
+  lastSyncAt: null,
+  lastError: '',
+  uploadTimer: null,
+  pullTimer: null,
+  deviceId: load('pos_device_id', '') || (() => { const id = 'dev_' + uid(); save('pos_device_id', id); return id; })(),
+};
+
+const SYNC_INTERVAL = 30000; // 30 秒下拉一次
+const UPLOAD_DEBOUNCE = 1500; // 變動後 1.5 秒上傳
+
+// 啟動同步
+function startSync() {
+  if (!appSettings.syncUrl) {
+    toast('請先填入 Google Apps Script URL', 'warn');
+    return;
+  }
+  updateSyncStatus('idle');
+  document.getElementById('sync-status-btn').style.display = '';
+  // 立刻下拉一次
+  syncDownload(true);
+  // 啟動定時下拉
+  if (syncState.pullTimer) clearInterval(syncState.pullTimer);
+  syncState.pullTimer = setInterval(() => syncDownload(false), SYNC_INTERVAL);
+  toast('☁ 雲端同步已啟動', 'success');
+}
+
+function stopSync() {
+  if (syncState.uploadTimer) clearTimeout(syncState.uploadTimer);
+  if (syncState.pullTimer) clearInterval(syncState.pullTimer);
+  syncState.uploadTimer = null;
+  syncState.pullTimer = null;
+  syncState.status = 'idle';
+  document.getElementById('sync-status-btn').style.display = 'none';
+  toast('雲端同步已停用', 'warn');
+}
+
+// 標記資料變動，觸發延遲上傳
+function markChanged() {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  if (syncState.uploadTimer) clearTimeout(syncState.uploadTimer);
+  updateSyncStatus('pending');
+  syncState.uploadTimer = setTimeout(() => {
+    syncUpload();
+  }, UPLOAD_DEBOUNCE);
+}
+
+// 上傳資料
+async function syncUpload() {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  updateSyncStatus('uploading');
+  try {
+    const payload = {
+      action: 'sync',
+      source: syncState.deviceId,
+      data: {
+        products: products,
+        members: members,
+        coupons: coupons,
+        transactions: transactions,
+        heldOrders: heldOrders,
+      }
+    };
+    // 注意：Apps Script 接受 text/plain 避免預檢 OPTIONS
+    const response = await fetch(appSettings.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || '未知錯誤');
+    syncState.lastSyncAt = new Date();
+    syncState.lastError = '';
+    updateSyncStatus('synced');
+  } catch (err) {
+    console.error('上傳失敗', err);
+    syncState.lastError = err.message;
+    updateSyncStatus('error');
+  }
+}
+
+// 下載資料
+async function syncDownload(showToast = false) {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  if (syncState.uploadTimer) return; // 有未上傳的變更，跳過下拉避免覆蓋
+  if (syncState.status === 'uploading') return;
+  updateSyncStatus('downloading');
+  try {
+    const response = await fetch(appSettings.syncUrl + '?action=fetch&t=' + Date.now(), {
+      method: 'GET',
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || '未知錯誤');
+
+    const data = result.data || {};
+    let changed = false;
+
+    // 比對遠端 lastSyncedAt 與本地 lastSyncAt，避免覆蓋自己剛上傳的
+    if (data.products && Array.isArray(data.products) && data.products.length > 0) {
+      // 簡易比較：陣列長度或某筆資料有變
+      if (JSON.stringify(data.products) !== JSON.stringify(products)) {
+        products = data.products;
+        save('pos_products', products);
+        changed = true;
+      }
+    }
+    if (data.members && Array.isArray(data.members)) {
+      if (JSON.stringify(data.members) !== JSON.stringify(members)) {
+        members = data.members;
+        save('pos_members', members);
+        changed = true;
+      }
+    }
+    if (data.coupons && Array.isArray(data.coupons)) {
+      if (JSON.stringify(data.coupons) !== JSON.stringify(coupons)) {
+        coupons = data.coupons;
+        save('pos_coupons', coupons);
+        changed = true;
+      }
+    }
+    if (data.transactions && Array.isArray(data.transactions)) {
+      if (JSON.stringify(data.transactions) !== JSON.stringify(transactions)) {
+        transactions = data.transactions;
+        save('pos_transactions', transactions);
+        changed = true;
+      }
+    }
+    if (data.heldOrders && Array.isArray(data.heldOrders)) {
+      if (JSON.stringify(data.heldOrders) !== JSON.stringify(heldOrders)) {
+        heldOrders = data.heldOrders;
+        save('pos_held_orders', heldOrders);
+        changed = true;
+      }
+    }
+
+    syncState.lastSyncAt = new Date();
+    syncState.lastError = '';
+    updateSyncStatus('synced');
+
+    if (changed) {
+      // 重新渲染各畫面
+      renderCatBar(); renderProducts(); renderProductsTable();
+      renderMemberCards(); populateMemberSelect();
+      renderCoupons(); renderHoldBar(); calcTotals();
+      if (showToast) toast('☁ 已同步雲端資料', 'success');
+    } else if (showToast) {
+      toast('資料已是最新', 'success');
+    }
+  } catch (err) {
+    console.error('下載失敗', err);
+    syncState.lastError = err.message;
+    updateSyncStatus('error');
+    if (showToast) toast('同步失敗：' + err.message, 'error');
+  }
+}
+
+// 手動同步
+async function manualSync() {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) {
+    toast('請先到 ⚙ 設定啟用雲端同步', 'warn');
+    openSettingsModal();
+    return;
+  }
+  // 先上傳本地，再下載
+  await syncUpload();
+  await syncDownload(true);
+}
+
+// 測試連線
+async function testSyncConnection() {
+  const url = document.getElementById('set-sync-url').value.trim();
+  if (!url) { toast('請先填入 URL', 'warn'); return; }
+  const btn = document.getElementById('sync-test-btn');
+  btn.disabled = true;
+  btn.textContent = '🔌 測試中...';
+  try {
+    const response = await fetch(url + '?action=ping&t=' + Date.now());
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const result = await response.json();
+    if (result.ok) {
+      toast('✓ 連線成功！', 'success');
+    } else {
+      toast('連線失敗：' + result.error, 'error');
+    }
+  } catch (err) {
+    toast('連線失敗：' + err.message + '（檢查 URL 是否正確、Apps Script 是否設「所有人可存取」）', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔌 測試連線';
+  }
+}
+
+// 更新狀態顯示
+function updateSyncStatus(status) {
+  syncState.status = status;
+  const btn = document.getElementById('sync-status-btn');
+  if (!btn) return;
+  const map = {
+    idle:        { icon: '⏸', color: 'rgba(255,255,255,.5)', title: '同步閒置' },
+    pending:     { icon: '⏳', color: 'var(--warning)', title: '等待同步...' },
+    uploading:   { icon: '⬆', color: 'var(--gold)', title: '上傳中...' },
+    downloading: { icon: '⬇', color: 'var(--gold)', title: '下載中...' },
+    synced:      { icon: '✓', color: 'var(--success)', title: '已同步' },
+    error:       { icon: '⚠', color: 'var(--danger)', title: '同步失敗' },
+  };
+  const info = map[status] || map.idle;
+  btn.textContent = info.icon;
+  btn.style.color = info.color;
+  btn.title = info.title + (syncState.lastError ? '\n' + syncState.lastError : '');
+}
+
+// 設定 modal 中的狀態資訊
+function updateSyncStatusInfo() {
+  const el = document.getElementById('sync-status-info');
+  if (!el) return;
+  if (!appSettings.syncEnabled) {
+    el.innerHTML = '<span style="color:var(--text-muted);">⚪ 同步已停用</span>';
+    return;
+  }
+  const lastTime = syncState.lastSyncAt ? syncState.lastSyncAt.toLocaleString('zh-TW') : '尚未同步';
+  el.innerHTML = `
+    <div>狀態：<strong style="color:${syncState.status==='error'?'var(--danger)':'var(--success)'};">${syncState.status}</strong></div>
+    <div>最後同步：${lastTime}</div>
+    ${syncState.lastError ? `<div style="color:var(--danger);">錯誤：${syncState.lastError}</div>` : ''}
+    <div>裝置 ID：<span style="font-family:monospace;font-size:10px;">${syncState.deviceId}</span></div>
+  `;
+}
+
+// 包裝 save() 在儲存後觸發同步
+const originalSave = save;
+save = function(key, val) {
+  const result = originalSave(key, val);
+  // 只有資料 key 才觸發同步
+  if (result && ['pos_products', 'pos_members', 'pos_coupons', 'pos_transactions', 'pos_held_orders'].includes(key)) {
+    markChanged();
+  }
+  return result;
+};
 
 // 檢查 localStorage 使用情況
 function refreshStorageInfo() {
@@ -3776,6 +4056,11 @@ renderMemberCards();
 renderCoupons();
 calcTotals();
 renderHoldBar();
+
+// 若已啟用同步，自動啟動
+if (appSettings.syncEnabled && appSettings.syncUrl) {
+  setTimeout(() => startSync(), 800);
+}
 </script>
 </body>
 </html>
