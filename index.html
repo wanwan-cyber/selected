@@ -2,7 +2,11 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a2e25">
 <title>服飾精品 POS 系統</title>
 <style>
   :root {
@@ -372,6 +376,189 @@
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ══════════════════════════════════════════════
+     📱 MOBILE OPTIMIZATION (≤ 768px)
+  ══════════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    /* App: 改成由上而下，sidebar 變底部 nav */
+    #app { flex-direction: column-reverse; }
+
+    /* 底部 Tab Bar */
+    .sidebar {
+      width: 100%;
+      height: 60px;
+      flex-direction: row;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      flex-shrink: 0;
+      z-index: 100;
+      box-shadow: 0 -2px 16px rgba(0,0,0,0.15);
+    }
+    .sidebar-logo { display: none; }
+    .sidebar-nav { flex-direction: row; padding: 0; flex: 1; }
+    .sidebar-nav button {
+      width: auto; flex: 1; height: 60px;
+      border-radius: 0; gap: 2px;
+    }
+    .sidebar-nav button .nav-icon { font-size: 18px; }
+    .sidebar-nav button .nav-label { font-size: 10px; }
+    .sidebar-nav button.active {
+      background: rgba(201,168,76,0.18);
+      border-top: 2px solid var(--gold);
+    }
+    .sidebar-clock { display: none; }
+    .sidebar-settings {
+      width: 44px; height: 60px;
+      margin: 0;
+      border-radius: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 主內容區滾動 */
+    .main { flex: 1; min-height: 0; }
+    .page { flex-direction: column !important; }
+
+    /* ── POS 頁面 ── */
+    #pos-page { flex-direction: column !important; }
+    .pos-left { flex: none; min-height: 280px; max-height: 50vh; }
+    .pos-right { width: 100% !important; max-height: 50vh; overflow-y: auto; border-left: none !important; border-top: 1px solid var(--border); }
+
+    /* POS 工具列：搜尋、條碼 */
+    .pos-toolbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+    .pos-toolbar .barcode-wrap { flex: 1 1 100%; min-width: 0; }
+    .pos-toolbar .search-wrap { flex: 1; min-width: 0; }
+    .pos-toolbar select { font-size: 11px; padding: 0 6px; }
+
+    /* 分類 bar 縮小 */
+    .cat-bar { padding: 6px 10px; }
+    .cat-btn { padding: 4px 12px; font-size: 11px; }
+
+    /* 商品網格 */
+    .product-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 8px; }
+    .product-card { padding: 8px 10px; }
+    .product-card .p-thumb { height: 100px; margin-bottom: 6px; }
+    .product-card .p-name { font-size: 12px; }
+    .product-card .p-variants { font-size: 10px; }
+    .product-card .p-price { font-size: 14px; }
+
+    /* 購物車頂部 */
+    .cart-head-row { padding: 8px 12px 6px; }
+    .cart-head-row h3 { font-size: 13px; }
+    .cart-member-row { padding: 0 12px 8px; }
+    .cart-items { padding: 4px 10px; }
+    .cart-item { padding: 6px 2px; }
+    .ci-name { font-size: 12px; }
+    .ci-price { width: 50px; font-size: 12px; }
+
+    /* 折扣優惠券區 */
+    .cart-promo { padding: 6px 12px; }
+    .promo-row { gap: 4px; }
+    .promo-row label { font-size: 10px; }
+    .promo-row select, .promo-row input[type=number], .promo-row input[type=text] { font-size: 12px; padding: 4px 6px; }
+
+    /* 金額顯示 */
+    .cart-totals { padding: 8px 12px 4px; }
+    .total-row { font-size: 11px; }
+    .grand-display { padding: 10px 14px 8px; }
+    .grand-label { font-size: 10px; }
+    .grand-amount { font-size: 28px; }
+
+    /* 付款方式按鈕 */
+    .cart-pay { padding: 8px 12px 10px; }
+    .pay-btn { font-size: 10px; padding: 6px 2px; }
+    .quick-cash { gap: 3px; }
+    .quick-btn { font-size: 10px; padding: 6px 2px; }
+    .checkout-btn { padding: 12px; font-size: 14px; letter-spacing: 1px; }
+
+    /* 一般頁面 padding 縮小 */
+    .page-content { padding: 14px 12px 80px; }
+    .page-header { gap: 6px; }
+    .page-title { font-size: 18px; }
+    .page-header .btn { font-size: 12px; padding: 6px 12px; }
+
+    /* 表格手機版：橫向滾動 */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .data-table { min-width: 700px; }
+    .data-table th, .data-table td { padding: 8px 10px; font-size: 12px; }
+
+    /* 會員卡片 */
+    .member-cards { grid-template-columns: 1fr; gap: 12px; }
+    .member-card { padding: 14px; }
+
+    /* 統計卡片：手機 2 欄 */
+    .stat-cards { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-card { padding: 12px; }
+    .stat-card .sc-label { font-size: 11px; }
+    .stat-card .sc-value { font-size: 20px; }
+    .stat-card .sc-sub { font-size: 10px; }
+
+    /* 報表區塊 */
+    .report-section { padding: 14px; }
+    .report-section h4 { font-size: 13px; }
+    .bar-label { width: 60px; font-size: 11px; }
+
+    /* 廠商統計卡 */
+    .vendor-grid { grid-template-columns: 1fr; gap: 12px; }
+    .vendor-card { padding: 14px; }
+
+    /* 優惠券列 */
+    .coupon-list { grid-template-columns: 1fr; gap: 12px; }
+
+    /* Modal：手機改全螢幕風格 */
+    .modal-overlay { padding: 0; align-items: flex-end; }
+    .modal {
+      max-width: 100% !important;
+      width: 100%;
+      max-height: 92vh;
+      border-radius: 16px 16px 0 0;
+      animation: slideUpMobile .25s;
+    }
+    @keyframes slideUpMobile {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .modal-head { padding: 14px 16px; position: sticky; top: 0; z-index: 5; }
+    .modal-head h3 { font-size: 15px; }
+    .modal-body { padding: 14px 16px; }
+    .modal-foot { padding: 12px 16px 18px; flex-wrap: wrap; gap: 6px; }
+    .modal-foot .btn { flex: 1; min-width: 100px; }
+
+    /* 表單欄位 */
+    .form-row { flex-direction: column; gap: 0; }
+    .form-row .form-group { flex: 1 1 100%; }
+    .form-group label { font-size: 11px; }
+    .form-group input, .form-group select, .form-group textarea { font-size: 14px; padding: 10px; }
+    .variant-section { padding: 12px; }
+    .variant-section h4 { font-size: 12px; }
+
+    /* 庫存矩陣手機版橫向捲動 */
+    .stock-matrix { font-size: 11px; }
+    .stock-matrix th, .stock-matrix td { padding: 4px; }
+    .stock-matrix input { max-width: 50px; font-size: 12px; padding: 3px; }
+
+    /* 大圖預覽 */
+    #image-preview-img { max-height: 60vh !important; }
+    #img-prev-btn { left: 8px !important; width: 36px !important; height: 36px !important; }
+    #img-next-btn { right: 8px !important; width: 36px !important; height: 36px !important; }
+
+    /* 收銀頁底部不要被 tab bar 蓋住 */
+    .pos-right { padding-bottom: 8px; }
+  }
+
+  /* 小螢幕手機 (≤ 380px) 進一步調整 */
+  @media (max-width: 380px) {
+    .product-grid { grid-template-columns: repeat(2, 1fr); gap: 5px; padding: 6px; }
+    .product-card { padding: 6px 8px; }
+    .product-card .p-thumb { height: 90px; }
+    .product-card .p-name { font-size: 11px; line-height: 1.25; }
+    .product-card .p-price { font-size: 13px; }
+    .grand-amount { font-size: 24px; }
+    .quick-cash { grid-template-columns: repeat(3, 1fr); }
+    .pay-methods { gap: 3px; }
+    .sidebar-nav button .nav-label { font-size: 9px; }
+  }
 </style>
 </head>
 <body>
@@ -658,7 +845,6 @@
           <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('pm-image-file').click()">📷 新增照片</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="addImageByUrl()">🔗 加入網址</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="uploadAllToCloudinary()" id="pm-cloudinary-btn">☁ 全部上傳到圖床</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="generateCaption()" id="pm-caption-btn">✨ AI 產生文案</button>
         </div>
         <div>
           <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">🔗 商品連結（IG 貼文、官網等）</label>
@@ -962,15 +1148,6 @@ A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--bord
       </div>
 
       <div class="variant-section">
-        <h4>🤖 AI 文案生成</h4>
-        <div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:8px;">
-          上傳商品照片時可自動產生 IG/FB 風格的銷售文案。需透過 Cloudflare Worker 中介伺服器呼叫 Anthropic API。
-        </div>
-        <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">AI Proxy URL</label>
-        <input type="text" id="set-ai-proxy" placeholder="https://pos-ai.xxx.workers.dev" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;">
-      </div>
-
-      <div class="variant-section">
         <h4>🧹 儲存空間管理</h4>
         <div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:10px;">
           當儲存空間接近上限時，系統會無法新增資料。可以清除本地照片來釋放空間（商品其他資料會保留）。
@@ -996,35 +1173,6 @@ A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--bord
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('settings-modal')">取消</button>
       <button class="btn btn-primary" onclick="saveSettings()">儲存設定</button>
-    </div>
-  </div>
-</div>
-
-<!-- AI Caption Modal -->
-<div class="modal-overlay" id="caption-modal">
-  <div class="modal" style="max-width:520px;">
-    <div class="modal-head">
-      <h3>✨ AI 自動文案</h3>
-      <button class="modal-close" onclick="closeModal('caption-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div id="caption-status" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;display:none;">
-        <div style="font-size:32px;margin-bottom:8px;">⏳</div>
-        AI 正在生成文案，請稍候...
-      </div>
-      <div id="caption-content" style="display:none;">
-        <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);">
-          ✏️ 你可以直接編輯下方文案，編輯後再套用或複製。
-        </div>
-        <textarea id="caption-text" rows="10" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13px;line-height:1.8;resize:vertical;outline:none;font-family:inherit;"></textarea>
-      </div>
-      <div id="caption-error" style="display:none;background:#fde8e8;border:1px solid #f3b8b0;color:var(--danger);padding:14px;border-radius:8px;font-size:13px;"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-outline" onclick="closeModal('caption-modal')">關閉</button>
-      <button class="btn btn-outline" onclick="copyCaption()" id="caption-copy-btn" style="display:none;">📋 複製</button>
-      <button class="btn btn-primary" onclick="applyCaption()" id="caption-apply-btn" style="display:none;">套用至備註</button>
-      <button class="btn btn-gold" onclick="regenerateCaption()" id="caption-regen-btn" style="display:none;">🔄 重新生成</button>
     </div>
   </div>
 </div>
@@ -2483,13 +2631,11 @@ document.addEventListener('keydown', e => {
 });
 
 // ======================== SETTINGS ========================
-let appSettings = load('pos_settings', { cloudinaryCloud: '', cloudinaryPreset: '', aiProxyUrl: 'https://pos-ai.n2abc5210.workers.dev' });
+let appSettings = load('pos_settings', { cloudinaryCloud: '', cloudinaryPreset: '' });
 
 function openSettingsModal() {
   document.getElementById('set-cloudinary-name').value = appSettings.cloudinaryCloud || '';
   document.getElementById('set-cloudinary-preset').value = appSettings.cloudinaryPreset || '';
-  const proxyEl = document.getElementById('set-ai-proxy');
-  if (proxyEl) proxyEl.value = appSettings.aiProxyUrl || '';
   updateCloudinaryStatus();
   refreshStorageInfo();
   openModal('settings-modal');
@@ -2507,8 +2653,6 @@ function updateCloudinaryStatus() {
 function saveSettings() {
   appSettings.cloudinaryCloud = document.getElementById('set-cloudinary-name').value.trim();
   appSettings.cloudinaryPreset = document.getElementById('set-cloudinary-preset').value.trim();
-  const proxyEl = document.getElementById('set-ai-proxy');
-  if (proxyEl) appSettings.aiProxyUrl = proxyEl.value.trim();
   save('pos_settings', appSettings);
   updateCloudinaryStatus();
   closeModal('settings-modal');
@@ -2699,131 +2843,6 @@ async function uploadToCloudinary() {
     btn.disabled = false;
     btn.textContent = originalText;
   }
-}
-
-// ======================== AI CAPTION ========================
-let captionGenerating = false;
-
-async function generateCaption() {
-  const img = getProductImagePreview();
-  if (!img) { toast('請先上傳商品照片', 'warn'); return; }
-
-  // 取得商品基本資訊作為參考
-  const name = document.getElementById('pm-name').value.trim();
-  const price = document.getElementById('pm-price').value;
-  const cat = pmCat;
-  const colors = pmColors.join('、');
-  const sizes = pmSizes.join('/');
-
-  openModal('caption-modal');
-  document.getElementById('caption-status').style.display = 'block';
-  document.getElementById('caption-content').style.display = 'none';
-  document.getElementById('caption-error').style.display = 'none';
-  document.getElementById('caption-copy-btn').style.display = 'none';
-  document.getElementById('caption-apply-btn').style.display = 'none';
-  document.getElementById('caption-regen-btn').style.display = 'none';
-
-  try {
-    let imagePayload;
-    if (img.startsWith('data:')) {
-      // base64
-      const [meta, b64] = img.split(',');
-      const mt = meta.match(/data:(.*?);/)[1];
-      imagePayload = { type: 'base64', media_type: mt, data: b64 };
-    } else {
-      // URL
-      imagePayload = { type: 'url', url: img };
-    }
-
-    const contextLines = [];
-    if (name) contextLines.push(`商品名稱：${name}`);
-    if (cat) contextLines.push(`類別：${cat}`);
-    if (colors) contextLines.push(`顏色：${colors}`);
-    if (sizes) contextLines.push(`尺寸：${sizes}`);
-    if (price) contextLines.push(`售價：$${price}`);
-    const context = contextLines.length ? `\n\n商品資訊：\n${contextLines.join('\n')}` : '';
-
-    const prompt = `你是一個女裝服飾選品店的社群編輯。請依據附上的商品照片，撰寫一篇 IG / Facebook 風格的銷售文案。${context}
-
-要求：
-1. 用繁體中文撰寫
-2. 含 3-5 個適合的 emoji，讓文字有溫度
-3. 第一段：吸睛開場，描述商品的視覺亮點（版型、剪裁、風格氛圍）
-4. 第二段：穿搭建議或場合（例如約會、上班、聚會、日常等）
-5. 第三段：規格與行動呼籲（顏色尺寸、引導購買）
-6. 結尾加 5-8 個 hashtag，包含 #商品類型 #風格 #品牌相關
-7. 整體字數 100-180 字，自然不浮誇，符合台灣女生口吻
-
-請直接給文案內容，不要前後說明。`;
-
-    const proxyUrl = appSettings.aiProxyUrl || 'https://pos-ai.n2abc5210.workers.dev';
-    const response = await fetch(proxyUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1000,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: imagePayload },
-            { type: "text", text: prompt }
-          ]
-        }]
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('API 錯誤詳情:', errText);
-      throw new Error(`API ${response.status}：${errText.slice(0, 300)}`);
-    }
-    const data = await response.json();
-    const text = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
-    if (!text) throw new Error('AI 沒有回傳內容');
-
-    document.getElementById('caption-status').style.display = 'none';
-    document.getElementById('caption-content').style.display = 'block';
-    document.getElementById('caption-text').value = text;
-    document.getElementById('caption-copy-btn').style.display = '';
-    document.getElementById('caption-apply-btn').style.display = '';
-    document.getElementById('caption-regen-btn').style.display = '';
-  } catch (err) {
-    console.error(err);
-    document.getElementById('caption-status').style.display = 'none';
-    const errEl = document.getElementById('caption-error');
-    errEl.style.display = 'block';
-    errEl.textContent = `生成失敗：${err.message || err}`;
-    document.getElementById('caption-regen-btn').style.display = '';
-  }
-}
-
-function regenerateCaption() {
-  generateCaption();
-}
-
-function copyCaption() {
-  const text = document.getElementById('caption-text').value;
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
-    toast('✓ 文案已複製到剪貼簿', 'success');
-  }).catch(() => {
-    // fallback
-    const ta = document.getElementById('caption-text');
-    ta.select();
-    document.execCommand('copy');
-    toast('✓ 文案已複製', 'success');
-  });
-}
-
-function applyCaption() {
-  const text = document.getElementById('caption-text').value;
-  if (!text) return;
-  document.getElementById('pm-note').value = text;
-  closeModal('caption-modal');
-  toast('✓ 文案已套用至備註欄', 'success');
 }
 
 // 壓縮圖片：將最大邊縮到 maxSize，並用 JPEG 品質 quality 輸出
@@ -3108,7 +3127,7 @@ async function onScanFileSelected(event) {
 
 請辨識所有品項並回傳 JSON 陣列。`;
 
-    const proxyUrl = appSettings.aiProxyUrl || 'https://pos-ai.n2abc5210.workers.dev';
+    const proxyUrl = 'https://pos-ai.n2abc5210.workers.dev';
     const response = await fetch(proxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
