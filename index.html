@@ -659,7 +659,6 @@
           <button type="button" class="btn btn-outline btn-sm" onclick="addImageByUrl()">🔗 加入網址</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="uploadAllToCloudinary()" id="pm-cloudinary-btn">☁ 全部上傳到圖床</button>
           <button type="button" class="btn btn-gold btn-sm" onclick="generateCaption()" id="pm-caption-btn">✨ AI 產生文案</button>
-          <button type="button" class="btn btn-gold btn-sm" onclick="shareProductLink()" id="pm-share-btn">📲 分享給客人</button>
         </div>
         <div>
           <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">🔗 商品連結（IG 貼文、官網等）</label>
@@ -1026,43 +1025,6 @@ A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--bord
       <button class="btn btn-outline" onclick="copyCaption()" id="caption-copy-btn" style="display:none;">📋 複製</button>
       <button class="btn btn-primary" onclick="applyCaption()" id="caption-apply-btn" style="display:none;">套用至備註</button>
       <button class="btn btn-gold" onclick="regenerateCaption()" id="caption-regen-btn" style="display:none;">🔄 重新生成</button>
-    </div>
-  </div>
-</div>
-
-<!-- Share Link Modal -->
-<div class="modal-overlay" id="share-modal">
-  <div class="modal" style="max-width:520px;">
-    <div class="modal-head">
-      <h3>📲 分享商品連結</h3>
-      <button class="modal-close" onclick="closeModal('share-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);line-height:1.6;">
-        💡 此連結包含完整商品資訊（照片、價格、規格、描述），可傳給 LINE / IG / 簡訊客人，他們不需要安裝任何 App。
-      </div>
-      <div class="form-group">
-        <label>商品連結</label>
-        <textarea id="share-link-output" readonly rows="4" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:monospace;background:var(--bg);outline:none;resize:vertical;word-break:break-all;"></textarea>
-      </div>
-      <div id="share-warning" style="display:none;background:#fde8e8;border:1px solid #f3b8b0;color:var(--danger);padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:10px;"></div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-outline" onclick="closeModal('share-modal')">關閉</button>
-      <button class="btn btn-outline" onclick="copyShareLink()">📋 複製連結</button>
-      <button class="btn btn-gold" onclick="previewShareLink()">👁 預覽客人看到的</button>
-    </div>
-  </div>
-</div>
-
-<!-- Public Product Showcase Modal (客人會看到的版面) -->
-<div class="modal-overlay" id="showcase-modal">
-  <div class="modal" style="max-width:540px;">
-    <div class="modal-head">
-      <h3 id="showcase-title">商品介紹</h3>
-      <button class="modal-close" onclick="closeShowcaseModal()">×</button>
-    </div>
-    <div class="modal-body" id="showcase-body">
     </div>
   </div>
 </div>
@@ -2520,135 +2482,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal('image-preview-modal');
 });
 
-// ======================== 分享商品連結 ========================
-function shareProductLink() {
-  // 從當前 modal 抓資料
-  const name = document.getElementById('pm-name').value.trim();
-  const price = parseFloat(document.getElementById('pm-price').value) || 0;
-  const note = document.getElementById('pm-note').value.trim();
-  const link = document.getElementById('pm-link').value.trim();
-  if (!name) { toast('請先填入商品名稱', 'warn'); return; }
-  if (!pmImages.length) { toast('請先加入至少一張照片', 'warn'); return; }
-
-  // 警告：base64 圖片無法分享（會讓 URL 過長）
-  const localImgCount = pmImages.filter(s => s.startsWith('data:')).length;
-  const warningEl = document.getElementById('share-warning');
-  if (localImgCount > 0) {
-    warningEl.style.display = 'block';
-    warningEl.innerHTML = `⚠️ 有 ${localImgCount} 張照片還是本地檔案，<strong>客人會看不到</strong>。請先點「☁ 全部上傳到圖床」把照片轉成網址。`;
-  } else {
-    warningEl.style.display = 'none';
-  }
-
-  // 編碼商品資料：只保留客人需要看的欄位
-  const payload = {
-    n: name,
-    p: price,
-    c: pmCat,
-    cl: pmColors,
-    sz: pmSizes,
-    nt: note,
-    lk: link,
-    img: pmImages.filter(s => !s.startsWith('data:')), // 只保留網址型圖片
-  };
-  const encoded = encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
-  const baseUrl = location.origin + location.pathname;
-  const shareUrl = baseUrl + '#p=' + encoded;
-
-  document.getElementById('share-link-output').value = shareUrl;
-  openModal('share-modal');
-}
-
-function copyShareLink() {
-  const text = document.getElementById('share-link-output').value;
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => {
-    toast('✓ 連結已複製，可貼到 LINE 傳給客人', 'success');
-  }).catch(() => {
-    const ta = document.getElementById('share-link-output');
-    ta.select();
-    document.execCommand('copy');
-    toast('✓ 連結已複製', 'success');
-  });
-}
-
-function previewShareLink() {
-  const link = document.getElementById('share-link-output').value;
-  if (!link) return;
-  const hash = link.split('#')[1];
-  if (!hash) return;
-  // 直接在當前頁面顯示
-  showShowcaseFromHash(hash);
-}
-
-// 顯示客人會看到的商品介紹頁
-function showShowcaseFromHash(hash) {
-  try {
-    const param = new URLSearchParams(hash);
-    const encoded = param.get('p');
-    if (!encoded) return false;
-    const decoded = decodeURIComponent(escape(atob(decodeURIComponent(encoded))));
-    const data = JSON.parse(decoded);
-    renderShowcase(data);
-    return true;
-  } catch (err) {
-    console.error('解析分享連結失敗', err);
-    return false;
-  }
-}
-
-function renderShowcase(d) {
-  const imgs = d.img || [];
-  const colorTxt = (d.cl || []).join('、');
-  const sizeTxt = (d.sz || []).join(' / ');
-
-  document.getElementById('showcase-title').textContent = d.n || '商品介紹';
-
-  const body = document.getElementById('showcase-body');
-  body.innerHTML = `
-    ${imgs.length ? `
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-        <div id="sc-main-img" style="width:100%;aspect-ratio:1;border-radius:12px;background:url('${imgs[0].replace(/'/g, "\\'")}') center/cover;border:1px solid var(--border);"></div>
-        ${imgs.length > 1 ? `
-          <div style="display:flex;gap:6px;overflow-x:auto;">
-            ${imgs.map((src, i) => `
-              <div onclick="document.getElementById('sc-main-img').style.backgroundImage='url(${src.replace(/'/g, "\\'")})';document.querySelectorAll('.sc-thumb').forEach(el=>el.style.borderColor='var(--border)');this.style.borderColor='var(--gold)';" class="sc-thumb" style="width:56px;height:56px;flex-shrink:0;border-radius:6px;background:url('${src.replace(/'/g, "\\'")}') center/cover;cursor:pointer;border:2px solid ${i===0?'var(--gold)':'var(--border)'};"></div>
-            `).join('')}
-          </div>
-        ` : ''}
-      </div>
-    ` : ''}
-    <div style="font-size:22px;font-weight:800;color:var(--primary);margin-bottom:6px;">${d.n || '—'}</div>
-    ${d.c ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;letter-spacing:.5px;">${d.c}</div>` : ''}
-    <div style="font-size:28px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums;margin-bottom:14px;">$${(d.p||0).toLocaleString()}</div>
-    ${(d.cl && d.cl.length) || (d.sz && d.sz.length) ? `
-      <div style="background:var(--bg);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
-        ${colorTxt ? `<div style="font-size:13px;margin-bottom:6px;"><span style="color:var(--text-muted);">顏色：</span><strong>${colorTxt}</strong></div>` : ''}
-        ${sizeTxt ? `<div style="font-size:13px;"><span style="color:var(--text-muted);">尺寸：</span><strong>${sizeTxt}</strong></div>` : ''}
-      </div>
-    ` : ''}
-    ${d.nt ? `<div style="font-size:14px;line-height:1.8;color:var(--text);background:var(--surface);border-left:3px solid var(--gold);padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:14px;white-space:pre-wrap;">${escapeHtml(d.nt)}</div>` : ''}
-    ${d.lk ? `<a href="${d.lk}" target="_blank" rel="noopener" style="display:block;text-align:center;padding:14px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:var(--gold);text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;">🔗 查看更多 / 私訊購買</a>` : ''}
-  `;
-  openModal('showcase-modal');
-}
-
-function closeShowcaseModal() {
-  closeModal('showcase-modal');
-  // 若是從分享連結來，清掉 hash
-  if (location.hash.startsWith('#p=')) {
-    history.replaceState(null, '', location.pathname + location.search);
-  }
-}
-
-// 頁面載入時檢查 URL hash 是否為分享連結
-function checkShareUrlOnLoad() {
-  if (location.hash && location.hash.startsWith('#p=')) {
-    const hash = location.hash.slice(1);
-    showShowcaseFromHash(hash);
-  }
-}
-
 // ======================== SETTINGS ========================
 let appSettings = load('pos_settings', { cloudinaryCloud: '', cloudinaryPreset: '', aiProxyUrl: 'https://pos-ai.n2abc5210.workers.dev' });
 
@@ -3924,7 +3757,6 @@ renderMemberCards();
 renderCoupons();
 calcTotals();
 renderHoldBar();
-checkShareUrlOnLoad();
 </script>
 </body>
 </html>
