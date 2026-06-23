@@ -633,6 +633,7 @@
             <span class="bc-icon">📦</span>
             <input type="text" id="barcode-input" placeholder="掃描條碼…" autocomplete="off"
               onkeydown="onBarcodeKey(event)">
+            <button onclick="openPosCameraScanner()" title="相機掃描" style="background:var(--gold);color:#fff;border:none;border-radius:6px;width:30px;height:28px;cursor:pointer;font-size:14px;line-height:1;padding:0;flex-shrink:0;">📷</button>
           </div>
           <div class="search-wrap">
             <span>🔍</span>
@@ -4345,9 +4346,21 @@ let cameraDetector = null;
 let lastScannedCode = '';
 let lastScannedTime = 0;
 let scanHistory = [];
+let cameraMode = 'stocktake'; // 'stocktake' | 'pos'
 
+// 為收銀台開啟相機
+function openPosCameraScanner() {
+  cameraMode = 'pos';
+  openCameraScannerCore('收銀掃描', '對準商品條碼自動加入購物車');
+}
+
+// 為盤點開啟相機（已存在的函數改名為 core）
 async function openCameraScanner() {
-  // 檢查瀏覽器支援
+  cameraMode = 'stocktake';
+  openCameraScannerCore('盤點掃描', '對準條碼自動 +1 計數');
+}
+
+async function openCameraScannerCore(title, subtitle) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     toast('此瀏覽器不支援相機', 'error');
     return;
@@ -4357,12 +4370,14 @@ async function openCameraScanner() {
   scanHistory = [];
   document.getElementById('cam-history').innerHTML = '';
   document.getElementById('cam-status').innerHTML = '正在啟動相機...';
+  // 更新標題
+  const titleEl = document.querySelector('#camera-scan-modal h3');
+  if (titleEl) titleEl.textContent = '📷 ' + title;
 
   try {
-    // 請求後置相機（手機）
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: 'environment' }, // 後置鏡頭
+        facingMode: { ideal: 'environment' },
         width: { ideal: 1280 },
         height: { ideal: 720 }
       }
@@ -4372,10 +4387,9 @@ async function openCameraScanner() {
     video.srcObject = cameraStream;
     await video.play();
 
-    document.getElementById('cam-status').innerHTML = '🔍 對準條碼即可自動掃描';
+    document.getElementById('cam-status').innerHTML = `🔍 ${subtitle}`;
     cameraScanning = true;
 
-    // 優先使用瀏覽器原生 BarcodeDetector
     if ('BarcodeDetector' in window) {
       try {
         cameraDetector = new BarcodeDetector({
@@ -4388,8 +4402,7 @@ async function openCameraScanner() {
       }
     }
 
-    // 不支援的話顯示提示
-    document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識，請使用手動輸入';
+    document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識';
 
   } catch (err) {
     console.error('相機開啟失敗', err);
@@ -4419,42 +4432,101 @@ async function scanWithBarcodeDetector(video) {
 
 function processScannedCode(code) {
   if (!code) return;
-  // 防止重複掃同一個（1.5 秒內）
   const now = Date.now();
   if (code === lastScannedCode && now - lastScannedTime < 1500) return;
   lastScannedCode = code;
   lastScannedTime = now;
 
-  // 觸發震動回饋（手機）
   if (navigator.vibrate) navigator.vibrate(80);
 
-  // 計入盤點
-  const result = scanAndCount(code);
-
-  // 更新相機畫面狀態
   const statusEl = document.getElementById('cam-status');
-  if (result.ok) {
-    statusEl.innerHTML = `✓ <strong style="color:#fff;">${result.product.name}</strong> · 已 ${result.count} 件`;
-    statusEl.style.background = 'rgba(39,174,96,.3)';
-    // 加入歷史
-    scanHistory.unshift({ code, name: result.product.name, count: result.count, time: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
+
+  if (cameraMode === 'pos') {
+    // 收銀台模式：加入購物車或設定會員
+    processPosScan(code, statusEl);
   } else {
-    statusEl.innerHTML = `❌ 條碼 ${code} 找不到商品`;
-    statusEl.style.background = 'rgba(192,57,43,.3)';
-    scanHistory.unshift({ code, name: '(找不到)', count: 0, time: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), notFound: true });
+    // 盤點模式：+1 計數
+    const result = scanAndCount(code);
+    if (result.ok) {
+      statusEl.innerHTML = `✓ <strong style="color:#fff;">${result.product.name}</strong> · 已 ${result.count} 件`;
+      statusEl.style.background = 'rgba(39,174,96,.3)';
+      scanHistory.unshift({ code, name: result.product.name, count: result.count, time: now });
+    } else {
+      statusEl.innerHTML = `❌ 條碼 ${code} 找不到商品`;
+      statusEl.style.background = 'rgba(192,57,43,.3)';
+      scanHistory.unshift({ code, name: '(找不到)', count: 0, time: now, notFound: true });
+    }
   }
 
-  // 限制歷史長度
   if (scanHistory.length > 10) scanHistory = scanHistory.slice(0, 10);
   renderScanHistory();
 
-  // 1.5 秒後恢復狀態
   setTimeout(() => {
     if (cameraScanning) {
-      document.getElementById('cam-status').innerHTML = '🔍 對準條碼即可自動掃描';
+      const subtitle = cameraMode === 'pos' ? '對準商品條碼自動加入購物車' : '對準條碼自動 +1 計數';
+      document.getElementById('cam-status').innerHTML = `🔍 ${subtitle}`;
       document.getElementById('cam-status').style.background = '';
     }
   }, 1500);
+}
+
+function processPosScan(code, statusEl) {
+  const now = Date.now();
+  // 先看會員
+  const m = members.find(x => x.barcode && x.barcode === code);
+  if (m) {
+    setMember(m);
+    statusEl.innerHTML = `👤 會員：<strong style="color:#fff;">${m.name}</strong>`;
+    statusEl.style.background = 'rgba(201,168,76,.3)';
+    scanHistory.unshift({ code, name: `會員 ${m.name}`, count: 1, time: now });
+    return;
+  }
+
+  // 再看商品
+  const p = products.find(x => x.barcode && x.barcode === code);
+  if (p) {
+    // 若商品只有單一規格 → 直接 +1 到購物車；否則開啟規格選擇
+    if (p.colors.length <= 1 && p.sizes.length <= 1) {
+      // 直接加入購物車
+      addItemDirectFromCamera(p);
+      const inCart = cart.filter(c => c.productId === p.id).reduce((s, c) => s + c.qty, 0);
+      statusEl.innerHTML = `🛒 <strong style="color:#fff;">${p.name}</strong> · 購物車內 ${inCart} 件`;
+      statusEl.style.background = 'rgba(39,174,96,.3)';
+      scanHistory.unshift({ code, name: p.name, count: inCart, time: now });
+    } else {
+      // 多規格 → 關閉相機，跳出規格選擇
+      closeCameraScanner();
+      selectProduct(p.id);
+      toast(`📦 ${p.name}：請選擇規格`, 'success');
+    }
+    return;
+  }
+
+  // 找不到
+  statusEl.innerHTML = `❌ 條碼 ${code} 找不到商品/會員`;
+  statusEl.style.background = 'rgba(192,57,43,.3)';
+  scanHistory.unshift({ code, name: '(找不到)', count: 0, time: now, notFound: true });
+}
+
+// 從相機直接加入購物車（單一規格商品）
+function addItemDirectFromCamera(p) {
+  const key = p.id + '||';
+  const existing = cart.find(c => c.key === key);
+  if (existing) {
+    existing.qty += 1;
+  } else {
+    cart.push({
+      key,
+      productId: p.id,
+      name: p.name,
+      color: p.colors[0] || '',
+      size: p.sizes[0] || '',
+      price: p.price,
+      qty: 1,
+    });
+  }
+  renderCart();
+  calcTotals();
 }
 
 function renderScanHistory() {
@@ -4462,13 +4534,15 @@ function renderScanHistory() {
   if (!scanHistory.length) { el.innerHTML = ''; return; }
   el.innerHTML = `
     <div style="font-size:10px;color:rgba(255,255,255,.5);margin-bottom:4px;letter-spacing:1px;">最近掃描</div>
-    ${scanHistory.slice(0, 6).map(h => `
+    ${scanHistory.slice(0, 6).map(h => {
+      const timeStr = new Date(h.time).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      return `
       <div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:${h.notFound ? '#ff9999' : 'rgba(255,255,255,.85)'};">
-        <span>${h.time}</span>
+        <span>${timeStr}</span>
         <span style="flex:1;text-align:left;margin-left:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span>
         ${!h.notFound ? `<span style="color:var(--gold);font-weight:700;">${h.count}件</span>` : '<span>❌</span>'}
       </div>
-    `).join('')}
+    `;}).join('')}
   `;
 }
 
