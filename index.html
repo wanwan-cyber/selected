@@ -377,6 +377,22 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* 7-day trend chart */
+  .trend-chart { display: flex; flex-direction: column; gap: 6px; }
+  .trend-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 6px 4px; border-radius: 6px; transition: background .15s; }
+  .trend-row:hover { background: var(--bg); }
+  .trend-today { background: linear-gradient(90deg, rgba(201,168,76,.08), transparent); border-left: 3px solid var(--gold); padding-left: 8px; }
+  .trend-label { line-height: 1.2; }
+  .trend-date { font-size: 13px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+  .trend-weekday { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+  .trend-track { position: relative; height: 22px; background: var(--surface2); border-radius: 11px; overflow: hidden; }
+  .trend-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-light), var(--gold)); border-radius: 11px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; min-width: fit-content; transition: width .6s cubic-bezier(.4,0,.2,1); }
+  .trend-fill.best { background: linear-gradient(90deg, var(--gold), #e0c46a, var(--gold)); }
+  .trend-val { font-size: 11px; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0,0,0,.3); white-space: nowrap; }
+  .trend-empty { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--text-muted); font-style: italic; }
+  .trend-meta { display: flex; gap: 8px; font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+  .trend-meta span { display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+
   /* ══════════════════════════════════════════════
      📱 MOBILE OPTIMIZATION (≤ 768px)
   ══════════════════════════════════════════════ */
@@ -545,6 +561,13 @@
 
     /* 收銀頁底部不要被 tab bar 蓋住 */
     .pos-right { padding-bottom: 8px; }
+
+    /* 7 日銷售趨勢圖手機版 */
+    .trend-row { grid-template-columns: 48px 1fr; gap: 8px; }
+    .trend-meta { grid-column: 1 / -1; padding-left: 56px; padding-top: 2px; }
+    .trend-date { font-size: 12px; }
+    .trend-track { height: 20px; }
+    .trend-val { font-size: 10px; }
   }
 
   /* 小螢幕手機 (≤ 380px) 進一步調整 */
@@ -846,6 +869,7 @@
           <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('pm-image-file').click()">📷 新增照片</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="addImageByUrl()">🔗 加入網址</button>
           <button type="button" class="btn btn-outline btn-sm" onclick="uploadAllToCloudinary()" id="pm-cloudinary-btn">☁ 全部上傳到圖床</button>
+          <button type="button" class="btn btn-gold btn-sm" onclick="generateCaption()" id="pm-caption-btn">✨ AI 產生文案</button>
         </div>
         <div>
           <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">🔗 商品連結（IG 貼文、官網等）</label>
@@ -1192,6 +1216,35 @@ A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--bord
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('settings-modal')">取消</button>
       <button class="btn btn-primary" onclick="saveSettings()">儲存設定</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Caption Modal -->
+<div class="modal-overlay" id="caption-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3>✨ AI 自動文案</h3>
+      <button class="modal-close" onclick="closeModal('caption-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="caption-status" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;display:none;">
+        <div style="font-size:32px;margin-bottom:8px;">⏳</div>
+        AI 正在生成文案，請稍候...
+      </div>
+      <div id="caption-content" style="display:none;">
+        <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);">
+          ✏️ 你可以直接編輯下方文案，編輯後再套用或複製。
+        </div>
+        <textarea id="caption-text" rows="10" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:13px;line-height:1.8;resize:vertical;outline:none;font-family:inherit;"></textarea>
+      </div>
+      <div id="caption-error" style="display:none;background:#fde8e8;border:1px solid #f3b8b0;color:var(--danger);padding:14px;border-radius:8px;font-size:13px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('caption-modal')">關閉</button>
+      <button class="btn btn-outline" onclick="copyCaption()" id="caption-copy-btn" style="display:none;">📋 複製</button>
+      <button class="btn btn-primary" onclick="applyCaption()" id="caption-apply-btn" style="display:none;">套用至備註</button>
+      <button class="btn btn-gold" onclick="regenerateCaption()" id="caption-regen-btn" style="display:none;">🔄 重新生成</button>
     </div>
   </div>
 </div>
@@ -2585,6 +2638,124 @@ async function uploadOneToCloudinary(base64Data, cloudName, preset) {
 // 維持舊的單張上傳函數作別名（避免其他地方呼叫壞掉）
 function uploadToCloudinary() { return uploadAllToCloudinary(); }
 
+// ======================== AI CAPTION ========================
+async function generateCaption() {
+  const img = getProductImagePreview();
+  if (!img) { toast('請先上傳商品照片', 'warn'); return; }
+
+  // 取得商品基本資訊作為參考
+  const name = document.getElementById('pm-name').value.trim();
+  const price = document.getElementById('pm-price').value;
+  const cat = pmCat;
+  const colors = pmColors.join('、');
+  const sizes = pmSizes.join('/');
+
+  openModal('caption-modal');
+  document.getElementById('caption-status').style.display = 'block';
+  document.getElementById('caption-content').style.display = 'none';
+  document.getElementById('caption-error').style.display = 'none';
+  document.getElementById('caption-copy-btn').style.display = 'none';
+  document.getElementById('caption-apply-btn').style.display = 'none';
+  document.getElementById('caption-regen-btn').style.display = 'none';
+
+  try {
+    let imagePayload;
+    if (img.startsWith('data:')) {
+      const [meta, b64] = img.split(',');
+      const mt = meta.match(/data:(.*?);/)[1];
+      imagePayload = { type: 'base64', media_type: mt, data: b64 };
+    } else {
+      imagePayload = { type: 'url', url: img };
+    }
+
+    const contextLines = [];
+    if (name) contextLines.push(`商品名稱：${name}`);
+    if (cat) contextLines.push(`類別：${cat}`);
+    if (colors) contextLines.push(`顏色：${colors}`);
+    if (sizes) contextLines.push(`尺寸：${sizes}`);
+    if (price) contextLines.push(`售價：$${price}`);
+    const context = contextLines.length ? `\n\n商品資訊：\n${contextLines.join('\n')}` : '';
+
+    const prompt = `你是一個女裝服飾選品店的社群編輯。請依據附上的商品照片，撰寫一篇 IG / Facebook 風格的銷售文案。${context}
+
+要求：
+1. 用繁體中文撰寫
+2. 含 3-5 個適合的 emoji，讓文字有溫度
+3. 第一段：吸睛開場，描述商品的視覺亮點（版型、剪裁、風格氛圍）
+4. 第二段：穿搭建議或場合（例如約會、上班、聚會、日常等）
+5. 第三段：規格與行動呼籲（顏色尺寸、引導購買）
+6. 結尾加 5-8 個 hashtag，包含 #商品類型 #風格 #品牌相關
+7. 整體字數 100-180 字，自然不浮誇，符合台灣女生口吻
+
+請直接給文案內容，不要前後說明。`;
+
+    const proxyUrl = 'https://pos-ai.n2abc5210.workers.dev';
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: imagePayload },
+            { type: "text", text: prompt }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('API 錯誤詳情:', errText);
+      throw new Error(`API ${response.status}：${errText.slice(0, 300)}`);
+    }
+    const data = await response.json();
+    const text = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
+    if (!text) throw new Error('AI 沒有回傳內容');
+
+    document.getElementById('caption-status').style.display = 'none';
+    document.getElementById('caption-content').style.display = 'block';
+    document.getElementById('caption-text').value = text;
+    document.getElementById('caption-copy-btn').style.display = '';
+    document.getElementById('caption-apply-btn').style.display = '';
+    document.getElementById('caption-regen-btn').style.display = '';
+  } catch (err) {
+    console.error(err);
+    document.getElementById('caption-status').style.display = 'none';
+    const errEl = document.getElementById('caption-error');
+    errEl.style.display = 'block';
+    errEl.textContent = `生成失敗：${err.message || err}`;
+    document.getElementById('caption-regen-btn').style.display = '';
+  }
+}
+
+function regenerateCaption() {
+  generateCaption();
+}
+
+function copyCaption() {
+  const text = document.getElementById('caption-text').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    toast('✓ 文案已複製到剪貼簿', 'success');
+  }).catch(() => {
+    const ta = document.getElementById('caption-text');
+    ta.select();
+    document.execCommand('copy');
+    toast('✓ 文案已複製', 'success');
+  });
+}
+
+function applyCaption() {
+  const text = document.getElementById('caption-text').value;
+  if (!text) return;
+  document.getElementById('pm-note').value = text;
+  closeModal('caption-modal');
+  toast('✓ 文案已套用至備註欄', 'success');
+}
+
 // 大圖預覽（支援多張切換）
 let viewerImages = [];
 let viewerIdx = 0;
@@ -3760,21 +3931,101 @@ function renderReport() {
     <div class="stat-card"><div class="sc-label">累計淨利</div><div class="sc-value">${fmt(totalProfit)}</div><div class="sc-sub">${profitMargin}% 毛利率</div></div>
   `;
 
-  // 7-day bar chart (simulated)
+  // 近 7 日銷售趨勢（從真實 transactions 算出）
   const days = [];
-  for (let i=6; i>=0; i--) {
-    const d = new Date(); d.setDate(d.getDate()-i);
-    const label = (d.getMonth()+1)+'/'+(d.getDate());
-    const s = Math.floor(Math.random()*8000+2000);
-    days.push({ label, s });
+  let weekTotalSales = 0;
+  let weekTotalOrders = 0;
+  let weekTotalQty = 0;
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    const label = (d.getMonth() + 1) + '/' + d.getDate();
+    const weekday = ['日','一','二','三','四','五','六'][d.getDay()];
+    // 過濾當日交易
+    const dayTxs = transactions.filter(t => {
+      // t.date 格式："2026/6/23 13:45"
+      const parts = (t.date || '').split(' ')[0].split('/').map(Number);
+      if (parts.length < 3) return false;
+      const txDate = new Date(parts[0], parts[1] - 1, parts[2]);
+      return txDate >= d && txDate < next;
+    });
+    const sales = dayTxs.reduce((s, t) => s + (t.total || 0), 0);
+    const profit = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + (i.price - (i.cost || 0)) * i.qty, 0), 0);
+    const qty = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
+    const orders = dayTxs.length;
+    const avg = orders ? Math.round(sales / orders) : 0;
+    const isToday = i === 0;
+    days.push({ label, weekday, sales, profit, qty, orders, avg, isToday });
+    weekTotalSales += sales;
+    weekTotalOrders += orders;
+    weekTotalQty += qty;
   }
-  const maxDay = Math.max(...days.map(d=>d.s));
-  document.getElementById('sales-bar').innerHTML = days.map(d => `
-    <div class="bar-row">
-      <div class="bar-label">${d.label}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${d.s/maxDay*100}%"><span class="bar-val">${fmt(d.s)}</span></div></div>
+  const maxDay = Math.max(...days.map(d => d.sales), 1);
+  const weekAvg = Math.round(weekTotalSales / 7);
+
+  // 找出最高與最低日
+  const bestDay = days.reduce((a, b) => b.sales > a.sales ? b : a, days[0]);
+  const worstActiveDays = days.filter(d => d.sales > 0);
+  const worstDay = worstActiveDays.length ? worstActiveDays.reduce((a, b) => b.sales < a.sales ? b : a) : null;
+
+  document.getElementById('sales-bar').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
+      <div style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:8px;padding:10px;text-align:center;color:#fff;">
+        <div style="font-size:10px;opacity:.7;letter-spacing:1px;">本週銷售</div>
+        <div style="font-size:18px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums;margin-top:2px;">${fmt(weekTotalSales)}</div>
+        <div style="font-size:10px;opacity:.6;">日均 ${fmt(weekAvg)}</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">本週訂單</div>
+        <div style="font-size:18px;font-weight:900;color:var(--primary);font-variant-numeric:tabular-nums;margin-top:2px;">${weekTotalOrders}</div>
+        <div style="font-size:10px;color:var(--text-muted);">${weekTotalQty} 件商品</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">平均客單</div>
+        <div style="font-size:18px;font-weight:900;color:var(--primary);font-variant-numeric:tabular-nums;margin-top:2px;">${weekTotalOrders ? fmt(Math.round(weekTotalSales / weekTotalOrders)) : '$0'}</div>
+        <div style="font-size:10px;color:var(--text-muted);">每筆均額</div>
+      </div>
     </div>
-  `).join('');
+    <div class="trend-chart">
+      ${days.map(d => {
+        const pct = d.sales > 0 ? (d.sales / maxDay * 100) : 0;
+        const isBest = d.sales > 0 && d.sales === bestDay.sales && weekTotalSales > 0;
+        return `
+          <div class="trend-row ${d.isToday ? 'trend-today' : ''}">
+            <div class="trend-label">
+              <div class="trend-date">${d.label}</div>
+              <div class="trend-weekday">週${d.weekday}${d.isToday ? ' · 今日' : ''}</div>
+            </div>
+            <div class="trend-track">
+              <div class="trend-fill ${isBest ? 'best' : ''}" style="width:${pct}%;">
+                ${d.sales > 0 ? `<span class="trend-val">${fmt(d.sales)}${isBest ? ' 🏆' : ''}</span>` : ''}
+              </div>
+              ${d.sales === 0 ? '<span class="trend-empty">無交易</span>' : ''}
+            </div>
+            <div class="trend-meta">
+              ${d.orders > 0 ? `
+                <span class="trend-orders" title="訂單數">📋 ${d.orders}</span>
+                <span class="trend-qty" title="件數">👕 ${d.qty}</span>
+                <span class="trend-avg" title="客單價">💰 ${fmt(d.avg)}</span>
+              ` : '<span style="color:var(--text-muted);font-size:10px;">—</span>'}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+    ${weekTotalSales > 0 ? `
+      <div style="margin-top:14px;padding:10px 14px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;font-size:12px;color:var(--primary);line-height:1.7;">
+        💡 <strong>本週洞察</strong>：銷售最佳日是 <strong>${bestDay.label}（週${bestDay.weekday}）</strong>，達 <strong style="color:var(--gold);">${fmt(bestDay.sales)}</strong>${worstDay && worstDay.label !== bestDay.label ? `；最低是 ${worstDay.label}（${fmt(worstDay.sales)}）` : ''}。
+      </div>
+    ` : `
+      <div style="margin-top:14px;padding:14px;background:var(--bg);border-radius:8px;text-align:center;color:var(--text-muted);font-size:12px;">
+        近 7 日尚無交易紀錄
+      </div>
+    `}
+  `;
 
   // Top products
   const pMap = {};
