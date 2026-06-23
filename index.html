@@ -1083,6 +1083,11 @@ A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--bord
       <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);line-height:1.6;">
         ✏️ 請核對下方品項，可以直接編輯欄位。<strong>「已存在」</strong>會更新既有商品（進貨單會增加庫存），<strong>「新商品」</strong>會自動建立。
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;font-size:12px;">
+        <span style="color:var(--text-muted);font-weight:600;">🎯 一鍵套用到所有列：</span>
+        <button class="btn btn-outline btn-sm" onclick="bulkApplyColor()" style="font-size:11px;padding:4px 10px;">🎨 統一顏色</button>
+        <button class="btn btn-outline btn-sm" onclick="bulkApplySize()" style="font-size:11px;padding:4px 10px;">📏 統一尺寸</button>
+      </div>
       <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px;">
           <thead style="background:var(--surface2);">
@@ -3875,6 +3880,9 @@ async function onScanFileSelected(event) {
 
 // === 匯入核對 Modal ===
 function openImportReviewModal() {
+  // 清掉舊的廠商選擇器
+  const oldPicker = document.getElementById('import-vendor-picker');
+  if (oldPicker) oldPicker.remove();
   renderImportReview();
   openModal('import-review-modal');
 }
@@ -3885,13 +3893,31 @@ function renderImportReview() {
   document.getElementById('import-review-title').textContent =
     `📋 AI 辨識結果（${docTypeLabel}）— 共 ${aiScanResults.length} 筆`;
 
+  // 蒐集現有所有顏色 / 尺寸供選擇
+  const allColors = getAllColors();
+  const allSizes = getAllSizes();
+  // 並把 AI 辨識出來、但不在現有清單的顏色/尺寸也加入
+  aiScanResults.forEach(item => {
+    if (item.color && !allColors.includes(item.color)) allColors.push(item.color);
+    if (item.size && !allSizes.includes(item.size)) allSizes.push(item.size);
+  });
+
   // 預先比對既有商品（依款號）
   tbody.innerHTML = aiScanResults.map((item, idx) => {
-    // 嘗試從款號比對既有商品
     const existing = item.sku ? products.find(p => p.sku && (p.sku === item.sku || p.sku === item.sku.toUpperCase() || item.sku.includes(p.sku))) : null;
     const statusBadge = existing
       ? `<span class="badge badge-green" title="已比對到既有商品">已存在</span>`
       : `<span class="badge badge-orange" title="將建立為新商品">新商品</span>`;
+
+    // 顏色下拉（datalist 風格：可選可打）
+    const colorOptions = allColors.map(c =>
+      `<option value="${escapeHtml(c)}" ${item.color === c ? 'selected' : ''}>${escapeHtml(c)}</option>`
+    ).join('');
+    // 尺寸下拉
+    const sizeOptions = allSizes.map(s =>
+      `<option value="${escapeHtml(s)}" ${item.size === s ? 'selected' : ''}>${escapeHtml(s)}</option>`
+    ).join('');
+
     return `
       <tr style="border-top:1px solid var(--border);" data-idx="${idx}">
         <td style="padding:6px 8px;text-align:center;color:var(--text-muted);font-size:11px;">${idx+1}</td>
@@ -3899,13 +3925,81 @@ function renderImportReview() {
         <td style="padding:4px 6px;"><input type="text" value="${escapeHtml(item.name||'')}" oninput="updateScanItem(${idx},'name',this.value)" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;"></td>
         <td style="padding:4px 6px;"><input type="number" value="${item.qty||1}" min="1" oninput="updateScanItem(${idx},'qty',parseInt(this.value)||1)" style="width:55px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
         <td style="padding:4px 6px;"><input type="number" value="${item.price||0}" min="0" oninput="updateScanItem(${idx},'price',parseFloat(this.value)||0)" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
-        <td style="padding:4px 6px;"><input type="text" value="${escapeHtml(item.color||'')}" placeholder="—" oninput="updateScanItem(${idx},'color',this.value)" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;"></td>
-        <td style="padding:4px 6px;"><input type="text" value="${escapeHtml(item.size||'')}" placeholder="—" oninput="updateScanItem(${idx},'size',this.value)" style="width:50px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;"></td>
+        <td style="padding:4px 6px;">
+          <select onchange="onScanColorChange(${idx}, this)" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
+            <option value="">— 無 —</option>
+            ${colorOptions}
+            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增顏色…</option>
+          </select>
+        </td>
+        <td style="padding:4px 6px;">
+          <select onchange="onScanSizeChange(${idx}, this)" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
+            <option value="">— 無 —</option>
+            ${sizeOptions}
+            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增尺寸…</option>
+          </select>
+        </td>
         <td style="padding:6px 8px;text-align:center;">${statusBadge}</td>
         <td style="padding:6px 8px;text-align:center;"><button onclick="removeScanItem(${idx})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px;padding:2px 6px;" title="移除此筆">🗑</button></td>
       </tr>
     `;
   }).join('') || '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted);">無辨識結果</td></tr>';
+}
+
+function onScanColorChange(idx, sel) {
+  if (sel.value === '__new__') {
+    const newColor = prompt('請輸入新顏色名稱：', '');
+    if (newColor && newColor.trim()) {
+      const trimmed = newColor.trim();
+      aiScanResults[idx].color = trimmed;
+      renderImportReview(); // 重繪以加入新選項
+    } else {
+      sel.value = aiScanResults[idx].color || '';
+    }
+  } else {
+    updateScanItem(idx, 'color', sel.value);
+  }
+}
+
+function onScanSizeChange(idx, sel) {
+  if (sel.value === '__new__') {
+    const newSize = prompt('請輸入新尺寸：', '');
+    if (newSize && newSize.trim()) {
+      const trimmed = newSize.trim();
+      aiScanResults[idx].size = trimmed;
+      renderImportReview();
+    } else {
+      sel.value = aiScanResults[idx].size || '';
+    }
+  } else {
+    updateScanItem(idx, 'size', sel.value);
+  }
+}
+
+// 一鍵套用顏色到所有列
+function bulkApplyColor() {
+  if (!aiScanResults.length) return;
+  const allColors = getAllColors();
+  const hint = allColors.length ? `\n\n現有顏色：${allColors.join('、')}` : '';
+  const color = prompt(`請輸入顏色，將套用到全部 ${aiScanResults.length} 筆品項：${hint}`, aiScanResults[0].color || '');
+  if (color === null) return;
+  const trimmed = color.trim();
+  aiScanResults.forEach(item => { item.color = trimmed; });
+  renderImportReview();
+  toast(`✓ 已套用顏色「${trimmed || '無'}」到全部 ${aiScanResults.length} 筆`, 'success');
+}
+
+// 一鍵套用尺寸到所有列
+function bulkApplySize() {
+  if (!aiScanResults.length) return;
+  const allSizes = getAllSizes();
+  const hint = allSizes.length ? `\n\n現有尺寸：${allSizes.join('、')}` : '';
+  const size = prompt(`請輸入尺寸，將套用到全部 ${aiScanResults.length} 筆品項：${hint}`, aiScanResults[0].size || '');
+  if (size === null) return;
+  const trimmed = size.trim();
+  aiScanResults.forEach(item => { item.size = trimmed; });
+  renderImportReview();
+  toast(`✓ 已套用尺寸「${trimmed || '無'}」到全部 ${aiScanResults.length} 筆`, 'success');
 }
 
 function updateScanItem(idx, field, value) {
@@ -3924,15 +4018,51 @@ function escapeHtml(s) {
 function confirmImport() {
   if (!aiScanResults.length) { toast('沒有品項可匯入', 'error'); return; }
 
-  const vendorList = getAllVendors();
-  const vendorHint = vendorList.length
-    ? `（既有廠商：${vendorList.join('、')}）`
-    : '';
-  const vendor = prompt(`請輸入廠商名稱 ${vendorHint}：`, vendorList[0] || '');
-  if (vendor === null) return;
-  const vendorTrim = vendor.trim();
-  if (!vendorTrim) { toast('未指定廠商', 'error'); return; }
+  // 在核對視窗內顯示廠商選擇區（取代 prompt 對話框，手機才能正常用）
+  showVendorPickerForImport();
+}
 
+function showVendorPickerForImport() {
+  const vendorList = getAllVendors();
+  // 在 modal-body 底部插入廠商選擇器（如果還沒有）
+  let picker = document.getElementById('import-vendor-picker');
+  if (picker) picker.remove();
+
+  picker = document.createElement('div');
+  picker.id = 'import-vendor-picker';
+  picker.style.cssText = 'background:#fffbf0;border:2px solid var(--gold);border-radius:8px;padding:14px;margin-top:14px;';
+  picker.innerHTML = `
+    <div style="font-weight:700;color:var(--primary);margin-bottom:10px;font-size:13px;">📍 請選擇或輸入廠商名稱：</div>
+    ${vendorList.length ? `
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${vendorList.map(v => `<span class="chip" onclick="selectImportVendor('${v.replace(/'/g, "\\'")}')">${v}</span>`).join('')}
+      </div>
+    ` : ''}
+    <div style="display:flex;gap:6px;">
+      <input type="text" id="import-vendor-input" placeholder="輸入廠商名稱..." style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;" onkeydown="if(event.key==='Enter'){event.preventDefault();doImportWithVendor();}">
+      <button class="btn btn-primary btn-sm" onclick="doImportWithVendor()" style="white-space:nowrap;">✓ 確認匯入</button>
+    </div>
+  `;
+  document.querySelector('#import-review-modal .modal-body').appendChild(picker);
+  // 自動聚焦並滾動到底
+  setTimeout(() => {
+    document.getElementById('import-vendor-input').focus();
+    picker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 100);
+}
+
+function selectImportVendor(v) {
+  document.getElementById('import-vendor-input').value = v;
+  doImportWithVendor();
+}
+
+function doImportWithVendor() {
+  const vendor = document.getElementById('import-vendor-input').value.trim();
+  if (!vendor) { toast('請輸入或選擇廠商', 'warn'); return; }
+  performImport(vendor);
+}
+
+function performImport(vendorTrim) {
   let createdCount = 0;
   let updatedCount = 0;
 
