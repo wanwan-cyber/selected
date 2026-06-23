@@ -3611,8 +3611,44 @@ function escapeBm(s) {
 function bmUpdateLine(i, field, value) {
   if (!bmLines[i]) return;
   bmLines[i][field] = value;
-  // 條碼即時更新只需要重繪
-  renderBmLines();
+  // 只更新此列的條碼顯示與底部摘要，不整個重繪（避免 input 失焦）
+  updateLineBarcode(i);
+  updateBmSummary();
+}
+
+// 更新某一列的條碼顯示
+function updateLineBarcode(i) {
+  const line = bmLines[i];
+  if (!line) return;
+  const vendorCode = getVendorCode(bmVendor);
+  let barcode = '';
+  if (line.sku && parseFloat(line.cost) > 0) {
+    const costStr = String(Math.floor(parseFloat(line.cost)));
+    const prefix = costStr.length >= 2 ? costStr.slice(0,2) : costStr.padStart(2,'0');
+    let skuPart = String(line.sku).trim().toUpperCase();
+    if (skuPart.length < 4) skuPart = skuPart.padStart(4,'0');
+    if (skuPart.length > 4) skuPart = skuPart.slice(-4);
+    barcode = vendorCode + prefix + skuPart;
+  }
+  // 找到該列的條碼欄位（倒數第 2 個 td）
+  const tbody = document.getElementById('bm-lines-body');
+  if (!tbody) return;
+  const row = tbody.children[i];
+  if (!row) return;
+  const barcodeCell = row.children[row.children.length - 2]; // 倒數第二格
+  if (barcodeCell) {
+    barcodeCell.innerHTML = `<span style="font-family:monospace;font-size:11px;color:${barcode?'var(--gold)':'var(--text-muted)'};font-weight:700;">${barcode || '—'}</span>`;
+  }
+}
+
+// 更新底部摘要
+function updateBmSummary() {
+  const el = document.getElementById('bm-summary');
+  if (!el) return;
+  const validCount = bmLines.filter(l => l.sku && l.name && parseFloat(l.cost) > 0 && parseFloat(l.price) > 0).length;
+  const totalQty = bmLines.reduce((s, l) => s + (parseInt(l.qty) || 0), 0);
+  const totalCost = bmLines.reduce((s, l) => s + (parseFloat(l.cost) || 0) * (parseInt(l.qty) || 0), 0);
+  el.innerHTML = `共 <strong style="color:var(--primary);">${validCount}</strong> 筆有效資料、<strong>${totalQty}</strong> 件、進貨成本 <strong style="color:var(--gold);">$${totalCost.toLocaleString()}</strong>`;
 }
 
 function bmHandleCatChange(i, sel) {
