@@ -3861,14 +3861,31 @@ async function onScanFileSelected(event) {
     }
 
     aiScanResults = items;
-    statusEl.innerHTML = `✅ 辨識成功！共 ${items.length} 筆品項，正在開啟核對視窗...`;
+    statusEl.innerHTML = `✅ 辨識成功！共 ${items.length} 筆品項<br><button onclick="forceOpenReview()" style="margin-top:8px;background:var(--gold);color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">📋 點此開啟核對視窗</button>`;
     statusEl.style.background = 'rgba(39,174,96,.2)';
 
-    // 先關閉批次 modal，等動畫結束再開啟核對 modal
-    closeModal('batch-modal');
-    setTimeout(() => {
-      openImportReviewModal();
-    }, 300);
+    // 強制切換：手機 Safari 對 setTimeout 切換 modal 不穩定，改用 requestAnimationFrame
+    try {
+      renderImportReview();
+      const batchModal = document.getElementById('batch-modal');
+      if (batchModal) batchModal.classList.remove('open');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const reviewModal = document.getElementById('import-review-modal');
+          if (reviewModal) {
+            reviewModal.classList.add('open');
+            const body = reviewModal.querySelector('.modal-body');
+            if (body) body.scrollTop = 0;
+          }
+        });
+      });
+    } catch (e) {
+      console.error('開啟核對視窗失敗', e);
+      setTimeout(() => {
+        closeModal('batch-modal');
+        openImportReviewModal();
+      }, 100);
+    }
 
   } catch (err) {
     console.error(err);
@@ -3885,6 +3902,18 @@ function openImportReviewModal() {
   if (oldPicker) oldPicker.remove();
   renderImportReview();
   openModal('import-review-modal');
+}
+
+// 手動開啟核對視窗（自動切換失敗時的救援按鈕）
+function forceOpenReview() {
+  if (!aiScanResults.length) {
+    toast('沒有辨識結果可顯示', 'warn');
+    return;
+  }
+  closeModal('batch-modal');
+  setTimeout(() => {
+    openImportReviewModal();
+  }, 50);
 }
 
 function renderImportReview() {
