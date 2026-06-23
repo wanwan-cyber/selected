@@ -4408,24 +4408,60 @@ function saveTxEdit() {
 }
 
 function deleteTransaction(id) {
-  if (!confirm('確定要刪除此筆交易？\n（會同步扣回會員的累計消費與積分）')) return;
+  if (!confirm('確定要刪除此筆交易？\n（會還原商品庫存、扣回會員的累計消費與積分）')) return;
   const idx = transactions.findIndex(x => x.id === id);
   if (idx < 0) return;
   const t = transactions[idx];
+
+  // 還原商品庫存
+  let restoredCount = 0;
+  if (t.items && Array.isArray(t.items)) {
+    t.items.forEach(item => {
+      const p = products.find(x => x.id === item.productId);
+      if (!p) return;
+      // 從品名中嘗試解析顏色與尺寸（格式："基本款棉T (白 M)"）
+      const m = (item.name || '').match(/\(([^)]+)\)$/);
+      let color = '', size = '';
+      if (m) {
+        const parts = m[1].trim().split(/\s+/);
+        // 第一個 token 視為顏色，第二個視為尺寸（若有的話）
+        color = parts[0] || '';
+        size = parts[1] || '';
+        // 若該值不在商品的顏色/尺寸清單裡，可能是 size 在前
+        if (p.colors && p.colors.length && !p.colors.includes(color)) {
+          // 互換
+          if (p.sizes && p.sizes.includes(color)) {
+            [color, size] = [size, color];
+          }
+        }
+      }
+
+      if (!p.stockMap) p.stockMap = {};
+      const key = (color || '') + '|' + (size || '');
+      p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + item.qty;
+      p.stock = calcStockTotal(p.stockMap);
+      restoredCount += item.qty;
+    });
+    save('pos_products', products);
+  }
+
   // 回扣會員消費
   if (t.memberId) {
-    const m = members.find(x => x.id === t.memberId);
-    if (m) {
-      m.totalSpent = Math.max(0, m.totalSpent - t.total);
-      m.points = Math.max(0, m.points - (t.pointsEarned || 0));
+    const member = members.find(x => x.id === t.memberId);
+    if (member) {
+      member.totalSpent = Math.max(0, member.totalSpent - t.total);
+      member.points = Math.max(0, member.points - (t.pointsEarned || 0));
       save('pos_members', members);
     }
   }
+
   transactions.splice(idx, 1);
   save('pos_transactions', transactions);
   renderReport();
   renderMemberCards();
-  toast('交易已刪除', 'warn');
+  renderProductsTable();
+  renderProducts();
+  toast(`交易已刪除，還原 ${restoredCount} 件商品庫存`, 'warn');
 }
 
 // ======================== INIT ========================
