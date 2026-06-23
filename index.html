@@ -572,6 +572,12 @@
     .trend-date { font-size: 12px; }
     .trend-track { height: 20px; }
     .trend-val { font-size: 10px; }
+
+    /* 盤點頁手機版 */
+    #st-stats { grid-template-columns: repeat(2, 1fr) !important; }
+    #st-stats .stat-card { padding: 10px !important; }
+    #st-stats .sc-value { font-size: 18px !important; }
+    #st-stats .sc-label { font-size: 10px !important; }
   }
 
   /* 小螢幕手機 (≤ 380px) 進一步調整 */
@@ -605,6 +611,9 @@
       </button>
       <button data-page="coupons" onclick="showPage('coupons', this)">
         <span class="nav-icon">🎟</span><span class="nav-label">優惠</span>
+      </button>
+      <button data-page="stocktake" onclick="showPage('stocktake', this)">
+        <span class="nav-icon">📋</span><span class="nav-label">盤點</span>
       </button>
       <button data-page="report" onclick="showPage('report', this)">
         <span class="nav-icon">📊</span><span class="nav-label">報表</span>
@@ -763,6 +772,97 @@
           <button class="btn btn-primary" onclick="openCouponModal()">＋ 建立優惠券</button>
         </div>
         <div class="coupon-list" id="coupon-list"></div>
+      </div>
+    </div>
+
+    <!-- STOCK TAKE PAGE -->
+    <div class="page" id="stocktake-page">
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title"><span class="title-bar"></span>📋 庫存盤點</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="viewStockTakeHistory()">📜 歷史紀錄</button>
+            <button class="btn btn-primary" onclick="startNewStockTake()" id="st-start-btn">＋ 開始盤點</button>
+          </div>
+        </div>
+
+        <!-- 未開始盤點時的提示 -->
+        <div id="st-welcome" style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:12px;padding:30px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:12px;">📋</div>
+          <h3 style="color:var(--primary);margin-bottom:10px;">開始一次庫存盤點</h3>
+          <p style="color:var(--text-muted);font-size:13px;line-height:1.7;max-width:520px;margin:0 auto 20px;">
+            盤點會幫你比對「<strong>系統庫存</strong>」與「<strong>實際盤點數量</strong>」，找出差異後，由你決定是否套用調整。
+          </p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:700px;margin:0 auto;">
+            <div onclick="startNewStockTake('all')" style="background:#fff;border:2px solid var(--border);border-radius:10px;padding:18px;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:32px;margin-bottom:6px;">📋</div>
+              <div style="font-weight:700;color:var(--primary);margin-bottom:4px;">全面盤點</div>
+              <div style="font-size:11px;color:var(--text-muted);">列出所有商品逐筆填寫</div>
+            </div>
+            <div onclick="startNewStockTake('barcode')" style="background:#fff;border:2px solid var(--border);border-radius:10px;padding:18px;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:32px;margin-bottom:6px;">📷</div>
+              <div style="font-weight:700;color:var(--primary);margin-bottom:4px;">掃條碼盤點</div>
+              <div style="font-size:11px;color:var(--text-muted);">逐件掃描，類似零售體驗</div>
+            </div>
+            <div onclick="startNewStockTake('select')" style="background:#fff;border:2px solid var(--border);border-radius:10px;padding:18px;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border)'">
+              <div style="font-size:32px;margin-bottom:6px;">🎯</div>
+              <div style="font-weight:700;color:var(--primary);margin-bottom:4px;">指定盤點</div>
+              <div style="font-size:11px;color:var(--text-muted);">只盤點選定的商品</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 盤點進行中的畫面 -->
+        <div id="st-active" style="display:none;">
+          <!-- 進度卡片 -->
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;" id="st-stats"></div>
+
+          <!-- 掃描列（僅掃條碼模式顯示）-->
+          <div id="st-scan-bar" style="display:none;background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:12px;padding:16px;margin-bottom:14px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.7);letter-spacing:1px;display:block;margin-bottom:6px;">📷 掃描或輸入條碼（每次 +1）</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="st-scan-input" placeholder="條碼..." style="flex:1;padding:14px;border:none;border-radius:8px;font-size:18px;font-family:monospace;letter-spacing:2px;outline:none;background:#fff;" onkeydown="if(event.key==='Enter')stScanBarcode()" autofocus>
+              <button class="btn btn-gold" onclick="openCameraScanner()" title="開啟相機掃描" style="padding:0 16px;font-size:20px;">📷</button>
+            </div>
+            <div id="st-scan-feedback" style="margin-top:8px;font-size:13px;color:var(--gold);font-weight:600;min-height:18px;"></div>
+          </div>
+
+          <!-- 篩選工具列 -->
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;background:var(--bg);padding:10px 14px;border-radius:8px;">
+            <input type="text" id="st-search" placeholder="搜尋商品..." oninput="renderStockTakeTable()" style="flex:1;min-width:140px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            <select id="st-filter" onchange="renderStockTakeTable()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+              <option value="all">全部商品</option>
+              <option value="counted">已盤點</option>
+              <option value="uncounted">未盤點</option>
+              <option value="diff">有差異</option>
+            </select>
+          </div>
+
+          <!-- 商品列表 -->
+          <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:#fff;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:700px;">
+              <thead style="background:var(--surface2);">
+                <tr>
+                  <th style="padding:10px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">商品</th>
+                  <th style="padding:10px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">款號/條碼</th>
+                  <th style="padding:10px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">系統庫存</th>
+                  <th style="padding:10px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">盤點數量</th>
+                  <th style="padding:10px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">差異</th>
+                  <th style="padding:10px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;">狀態</th>
+                </tr>
+              </thead>
+              <tbody id="st-table-body"></tbody>
+            </table>
+          </div>
+
+          <!-- 底部操作 -->
+          <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+            <button class="btn btn-outline" onclick="cancelStockTake()">取消盤點</button>
+            <button class="btn btn-outline" onclick="saveStockTake(false)">💾 暫存記錄</button>
+            <button class="btn btn-gold" onclick="applyStockTakeAdjustments()" style="margin-left:auto;">⚙ 套用調整到庫存</button>
+            <button class="btn btn-primary" onclick="finishStockTake()">✓ 完成盤點</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1026,6 +1126,60 @@
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('batch-modal')">取消</button>
       <button class="btn btn-primary" onclick="saveBatch()">✓ 批次建立</button>
+    </div>
+  </div>
+</div>
+
+<!-- Camera Scanner Modal -->
+<div class="modal-overlay" id="camera-scan-modal">
+  <div class="modal" style="max-width:480px;background:#000;color:#fff;">
+    <div class="modal-head" style="background:rgba(0,0,0,.5);border-bottom:1px solid rgba(255,255,255,.1);">
+      <h3 style="color:var(--gold);">📷 相機掃描</h3>
+      <button class="modal-close" onclick="closeCameraScanner()" style="color:#fff;">×</button>
+    </div>
+    <div class="modal-body" style="padding:0;background:#000;">
+      <div style="position:relative;width:100%;aspect-ratio:1;overflow:hidden;background:#000;">
+        <video id="cam-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+        <canvas id="cam-canvas" style="display:none;"></canvas>
+        <!-- 掃描框 -->
+        <div style="position:absolute;top:25%;left:10%;width:80%;height:50%;border:3px solid var(--gold);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.3);pointer-events:none;">
+          <div style="position:absolute;top:-3px;left:-3px;width:30px;height:30px;border-top:5px solid var(--gold);border-left:5px solid var(--gold);border-radius:8px 0 0 0;"></div>
+          <div style="position:absolute;top:-3px;right:-3px;width:30px;height:30px;border-top:5px solid var(--gold);border-right:5px solid var(--gold);border-radius:0 8px 0 0;"></div>
+          <div style="position:absolute;bottom:-3px;left:-3px;width:30px;height:30px;border-bottom:5px solid var(--gold);border-left:5px solid var(--gold);border-radius:0 0 0 8px;"></div>
+          <div style="position:absolute;bottom:-3px;right:-3px;width:30px;height:30px;border-bottom:5px solid var(--gold);border-right:5px solid var(--gold);border-radius:0 0 8px 0;"></div>
+          <!-- 掃描動畫線 -->
+          <div id="cam-scan-line" style="position:absolute;left:5%;right:5%;height:2px;background:var(--gold);box-shadow:0 0 8px var(--gold);top:50%;animation:scanLine 2s ease-in-out infinite;"></div>
+        </div>
+      </div>
+      <div id="cam-status" style="padding:14px;text-align:center;background:#1a1a1a;font-size:14px;color:var(--gold);min-height:50px;">
+        正在啟動相機...
+      </div>
+      <div id="cam-history" style="padding:0 14px 14px;font-size:12px;color:rgba(255,255,255,.7);max-height:120px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-foot" style="background:#1a1a1a;border-top:1px solid rgba(255,255,255,.1);">
+      <button class="btn btn-outline" onclick="closeCameraScanner()" style="color:#fff;border-color:rgba(255,255,255,.3);background:transparent;">關閉</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes scanLine {
+    0% { top: 5%; }
+    50% { top: 95%; }
+    100% { top: 5%; }
+  }
+</style>
+
+<!-- Stock Take History Modal -->
+<div class="modal-overlay" id="sthist-modal">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-head">
+      <h3>📜 盤點歷史紀錄</h3>
+      <button class="modal-close" onclick="closeModal('sthist-modal')">×</button>
+    </div>
+    <div class="modal-body" id="sthist-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('sthist-modal')">關閉</button>
     </div>
   </div>
 </div>
@@ -1310,6 +1464,7 @@ function showPage(p, btn) {
   document.getElementById(p + '-page').classList.add('active');
   if (btn) btn.classList.add('active');
   if (p === 'report') renderReport();
+  if (p === 'stocktake') initStockTake();
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
@@ -3933,6 +4088,563 @@ function deleteCoupon(id) {
   coupons = coupons.filter(x => x.id !== id);
   save('pos_coupons', coupons);
   renderCoupons(); toast('優惠券已刪除', 'warn');
+}
+
+// ======================== STOCK TAKE (盤點) ========================
+let stockTakeData = load('pos_stock_take_active', null); // 進行中的盤點
+let stockTakeHistory = load('pos_stock_take_history', []); // 歷史盤點紀錄
+
+function startNewStockTake(mode) {
+  if (stockTakeData) {
+    if (!confirm('已有一筆未完成的盤點，確定要丟棄重新開始？')) return;
+  }
+  if (!mode) mode = 'all'; // 預設全面盤點
+
+  if (mode === 'select') {
+    // 指定盤點：彈出商品選擇
+    const skuOrName = prompt('請輸入要盤點的商品款號或關鍵字（用空格分隔多個）：', '');
+    if (!skuOrName) return;
+    const keywords = skuOrName.trim().split(/\s+/);
+    const selectedIds = products.filter(p =>
+      keywords.some(k =>
+        (p.sku || '').toLowerCase().includes(k.toLowerCase()) ||
+        (p.name || '').toLowerCase().includes(k.toLowerCase()) ||
+        (p.barcode || '').toLowerCase().includes(k.toLowerCase())
+      )
+    ).map(p => p.id);
+    if (!selectedIds.length) { toast('沒有符合的商品', 'warn'); return; }
+    stockTakeData = createStockTakeSession(mode, selectedIds);
+    toast(`已選定 ${selectedIds.length} 個商品準備盤點`, 'success');
+  } else {
+    stockTakeData = createStockTakeSession(mode, products.map(p => p.id));
+  }
+
+  save('pos_stock_take_active', stockTakeData);
+  showStockTakeUI();
+}
+
+function createStockTakeSession(mode, productIds) {
+  // 為每個商品建立盤點記錄（記錄當下系統庫存）
+  const items = {};
+  productIds.forEach(pid => {
+    const p = products.find(x => x.id === pid);
+    if (!p) return;
+    items[pid] = {
+      systemQty: getProductStock(p),
+      countedQty: null, // null 表示尚未盤點
+    };
+  });
+  return {
+    id: uid(),
+    mode,
+    startedAt: new Date().toISOString(),
+    items,
+  };
+}
+
+function showStockTakeUI() {
+  document.getElementById('st-welcome').style.display = 'none';
+  document.getElementById('st-active').style.display = 'block';
+  document.getElementById('st-start-btn').style.display = 'none';
+
+  // 掃描模式才顯示掃描列
+  const scanBar = document.getElementById('st-scan-bar');
+  if (stockTakeData && stockTakeData.mode === 'barcode') {
+    scanBar.style.display = 'block';
+    setTimeout(() => document.getElementById('st-scan-input').focus(), 100);
+  } else {
+    scanBar.style.display = 'none';
+  }
+
+  renderStockTakeStats();
+  renderStockTakeTable();
+}
+
+function hideStockTakeUI() {
+  document.getElementById('st-welcome').style.display = 'block';
+  document.getElementById('st-active').style.display = 'none';
+  document.getElementById('st-start-btn').style.display = '';
+}
+
+function renderStockTakeStats() {
+  if (!stockTakeData) return;
+  const items = stockTakeData.items;
+  const total = Object.keys(items).length;
+  const counted = Object.values(items).filter(it => it.countedQty !== null).length;
+  const diff = Object.values(items).filter(it => it.countedQty !== null && it.countedQty !== it.systemQty).length;
+
+  // 件數統計
+  const systemTotalPcs = Object.values(items).reduce((s, it) => s + (it.systemQty || 0), 0);
+  const countedTotalPcs = Object.values(items)
+    .filter(it => it.countedQty !== null)
+    .reduce((s, it) => s + it.countedQty, 0);
+  const totalDiff = Object.values(items)
+    .filter(it => it.countedQty !== null)
+    .reduce((sum, it) => sum + (it.countedQty - it.systemQty), 0);
+
+  const progress = total > 0 ? Math.round(counted / total * 100) : 0;
+
+  document.getElementById('st-stats').innerHTML = `
+    <div class="stat-card stat-today" style="padding:14px;">
+      <div class="sc-label">📋 盤點進度</div>
+      <div class="sc-value" style="font-size:22px;">${counted}/${total}</div>
+      <div class="sc-sub">完成 ${progress}% · ${stockTakeData.mode === 'all' ? '全面' : stockTakeData.mode === 'barcode' ? '掃條碼' : '指定'}</div>
+    </div>
+    <div class="stat-card" style="padding:14px;">
+      <div class="sc-label">📦 系統總件數</div>
+      <div class="sc-value" style="font-size:22px;">${systemTotalPcs}</div>
+      <div class="sc-sub">${total} 個商品款</div>
+    </div>
+    <div class="stat-card" style="padding:14px;">
+      <div class="sc-label">✅ 已盤點件數</div>
+      <div class="sc-value" style="font-size:22px;color:var(--success);">${countedTotalPcs}</div>
+      <div class="sc-sub">已盤 ${counted} 款</div>
+    </div>
+    <div class="stat-card" style="padding:14px;">
+      <div class="sc-label">⚠ 差異品項</div>
+      <div class="sc-value" style="font-size:22px;color:${diff > 0 ? 'var(--warning)' : 'var(--success)'};">${diff}</div>
+      <div class="sc-sub">${diff > 0 ? '需要關注' : '完全相符'}</div>
+    </div>
+    <div class="stat-card" style="padding:14px;">
+      <div class="sc-label">📊 總差異件數</div>
+      <div class="sc-value" style="font-size:22px;color:${totalDiff > 0 ? 'var(--success)' : totalDiff < 0 ? 'var(--danger)' : 'var(--primary)'};">${totalDiff > 0 ? '+' : ''}${totalDiff}</div>
+      <div class="sc-sub">${totalDiff > 0 ? '多出來' : totalDiff < 0 ? '短少' : '相符'}</div>
+    </div>
+  `;
+}
+
+function renderStockTakeTable() {
+  if (!stockTakeData) return;
+  const q = (document.getElementById('st-search').value || '').toLowerCase().trim();
+  const filter = document.getElementById('st-filter').value;
+
+  const tbody = document.getElementById('st-table-body');
+  const ids = Object.keys(stockTakeData.items);
+
+  let list = ids.map(pid => {
+    const p = products.find(x => x.id === pid);
+    const it = stockTakeData.items[pid];
+    return { p, it };
+  }).filter(({ p }) => p);
+
+  // 搜尋
+  if (q) {
+    list = list.filter(({ p }) =>
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.sku || '').toLowerCase().includes(q) ||
+      (p.barcode || '').toLowerCase().includes(q)
+    );
+  }
+
+  // 篩選
+  if (filter === 'counted') list = list.filter(({ it }) => it.countedQty !== null);
+  if (filter === 'uncounted') list = list.filter(({ it }) => it.countedQty === null);
+  if (filter === 'diff') list = list.filter(({ it }) => it.countedQty !== null && it.countedQty !== it.systemQty);
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text-muted);">沒有符合的商品</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(({ p, it }) => {
+    const diff = it.countedQty !== null ? (it.countedQty - it.systemQty) : null;
+    const status = it.countedQty === null
+      ? '<span class="badge" style="background:var(--surface2);color:var(--text-muted);">未盤點</span>'
+      : diff === 0
+        ? '<span class="badge badge-green">✓ 相符</span>'
+        : diff > 0
+          ? `<span class="badge" style="background:#e8f5e9;color:var(--success);">▲ 多 ${diff}</span>`
+          : `<span class="badge badge-red">▼ 短 ${Math.abs(diff)}</span>`;
+
+    return `
+      <tr style="border-top:1px solid var(--border);${diff !== 0 && it.countedQty !== null ? 'background:#fffbf0;' : ''}">
+        <td style="padding:8px 10px;">
+          <div style="font-weight:600;color:var(--primary);">${p.name}</div>
+          ${p.cat ? `<div style="font-size:11px;color:var(--text-muted);">${p.cat}</div>` : ''}
+        </td>
+        <td style="padding:8px 10px;">
+          <div style="font-family:monospace;font-size:11px;">${p.sku || '—'}</div>
+          <div style="font-family:monospace;font-size:10px;color:var(--text-muted);">${p.barcode || ''}</div>
+        </td>
+        <td style="padding:8px 10px;text-align:right;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums;">${it.systemQty}</td>
+        <td style="padding:8px 10px;text-align:right;">
+          <input type="number" value="${it.countedQty === null ? '' : it.countedQty}" placeholder="—" min="0"
+            onchange="updateCount('${p.id}', this.value)"
+            style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:right;font-weight:700;${it.countedQty !== null && diff !== 0 ? 'border-color:var(--warning);background:#fffbf0;' : ''}">
+        </td>
+        <td style="padding:8px 10px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;color:${diff === null ? 'var(--text-muted)' : diff === 0 ? 'var(--success)' : diff > 0 ? 'var(--success)' : 'var(--danger)'};">${diff === null ? '—' : (diff > 0 ? '+' : '') + diff}</td>
+        <td style="padding:8px 10px;text-align:center;">${status}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updateCount(productId, value) {
+  if (!stockTakeData || !stockTakeData.items[productId]) return;
+  const v = value === '' ? null : (parseInt(value) || 0);
+  stockTakeData.items[productId].countedQty = v;
+  save('pos_stock_take_active', stockTakeData);
+  renderStockTakeStats();
+  // 不重繪整個表格避免失焦，只在篩選改變時手動刷新
+}
+
+// 掃條碼盤點 +1
+function stScanBarcode() {
+  const inp = document.getElementById('st-scan-input');
+  const code = inp.value.trim();
+  if (!code) return;
+  inp.value = '';
+  scanAndCount(code);
+  inp.focus();
+}
+
+// 共用邏輯：掃到一個條碼後計數
+function scanAndCount(code) {
+  // 搜尋商品（依條碼或款號）
+  const p = products.find(x =>
+    (x.barcode || '').toUpperCase() === code.toUpperCase() ||
+    (x.sku || '').toUpperCase() === code.toUpperCase()
+  );
+
+  const feedback = document.getElementById('st-scan-feedback');
+  if (!p) {
+    if (feedback) {
+      feedback.innerHTML = `❌ 找不到條碼「${code}」對應的商品`;
+      feedback.style.color = '#ff9999';
+      setTimeout(() => { if (feedback) feedback.innerHTML = ''; }, 3000);
+    }
+    return { ok: false, code };
+  }
+
+  if (!stockTakeData.items[p.id]) {
+    stockTakeData.items[p.id] = {
+      systemQty: getProductStock(p),
+      countedQty: 0,
+    };
+  }
+
+  const cur = stockTakeData.items[p.id].countedQty || 0;
+  stockTakeData.items[p.id].countedQty = cur + 1;
+  save('pos_stock_take_active', stockTakeData);
+
+  if (feedback) {
+    feedback.innerHTML = `✓ <strong>${p.name}</strong> 已盤點 ${cur + 1} 件（系統庫存 ${stockTakeData.items[p.id].systemQty}）`;
+    feedback.style.color = 'var(--gold)';
+  }
+
+  renderStockTakeStats();
+  renderStockTakeTable();
+
+  return { ok: true, product: p, count: cur + 1, systemQty: stockTakeData.items[p.id].systemQty };
+}
+
+// ====== 相機掃描 ======
+let cameraStream = null;
+let cameraScanning = false;
+let cameraDetector = null;
+let lastScannedCode = '';
+let lastScannedTime = 0;
+let scanHistory = [];
+
+async function openCameraScanner() {
+  // 檢查瀏覽器支援
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('此瀏覽器不支援相機', 'error');
+    return;
+  }
+
+  openModal('camera-scan-modal');
+  scanHistory = [];
+  document.getElementById('cam-history').innerHTML = '';
+  document.getElementById('cam-status').innerHTML = '正在啟動相機...';
+
+  try {
+    // 請求後置相機（手機）
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' }, // 後置鏡頭
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+
+    const video = document.getElementById('cam-video');
+    video.srcObject = cameraStream;
+    await video.play();
+
+    document.getElementById('cam-status').innerHTML = '🔍 對準條碼即可自動掃描';
+    cameraScanning = true;
+
+    // 優先使用瀏覽器原生 BarcodeDetector
+    if ('BarcodeDetector' in window) {
+      try {
+        cameraDetector = new BarcodeDetector({
+          formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e', 'qr_code', 'codabar', 'itf']
+        });
+        scanWithBarcodeDetector(video);
+        return;
+      } catch (e) {
+        console.warn('BarcodeDetector 初始化失敗', e);
+      }
+    }
+
+    // 不支援的話顯示提示
+    document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識，請使用手動輸入';
+
+  } catch (err) {
+    console.error('相機開啟失敗', err);
+    let msg = '相機開啟失敗：';
+    if (err.name === 'NotAllowedError') msg += '請允許相機權限';
+    else if (err.name === 'NotFoundError') msg += '找不到相機';
+    else msg += err.message;
+    document.getElementById('cam-status').innerHTML = `❌ ${msg}`;
+  }
+}
+
+async function scanWithBarcodeDetector(video) {
+  if (!cameraScanning || !cameraDetector) return;
+  try {
+    const barcodes = await cameraDetector.detect(video);
+    if (barcodes.length > 0) {
+      const code = barcodes[0].rawValue;
+      processScannedCode(code);
+    }
+  } catch (e) {
+    // 偵測失敗就略過這一幀
+  }
+  if (cameraScanning) {
+    requestAnimationFrame(() => scanWithBarcodeDetector(video));
+  }
+}
+
+function processScannedCode(code) {
+  if (!code) return;
+  // 防止重複掃同一個（1.5 秒內）
+  const now = Date.now();
+  if (code === lastScannedCode && now - lastScannedTime < 1500) return;
+  lastScannedCode = code;
+  lastScannedTime = now;
+
+  // 觸發震動回饋（手機）
+  if (navigator.vibrate) navigator.vibrate(80);
+
+  // 計入盤點
+  const result = scanAndCount(code);
+
+  // 更新相機畫面狀態
+  const statusEl = document.getElementById('cam-status');
+  if (result.ok) {
+    statusEl.innerHTML = `✓ <strong style="color:#fff;">${result.product.name}</strong> · 已 ${result.count} 件`;
+    statusEl.style.background = 'rgba(39,174,96,.3)';
+    // 加入歷史
+    scanHistory.unshift({ code, name: result.product.name, count: result.count, time: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
+  } else {
+    statusEl.innerHTML = `❌ 條碼 ${code} 找不到商品`;
+    statusEl.style.background = 'rgba(192,57,43,.3)';
+    scanHistory.unshift({ code, name: '(找不到)', count: 0, time: new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), notFound: true });
+  }
+
+  // 限制歷史長度
+  if (scanHistory.length > 10) scanHistory = scanHistory.slice(0, 10);
+  renderScanHistory();
+
+  // 1.5 秒後恢復狀態
+  setTimeout(() => {
+    if (cameraScanning) {
+      document.getElementById('cam-status').innerHTML = '🔍 對準條碼即可自動掃描';
+      document.getElementById('cam-status').style.background = '';
+    }
+  }, 1500);
+}
+
+function renderScanHistory() {
+  const el = document.getElementById('cam-history');
+  if (!scanHistory.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div style="font-size:10px;color:rgba(255,255,255,.5);margin-bottom:4px;letter-spacing:1px;">最近掃描</div>
+    ${scanHistory.slice(0, 6).map(h => `
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:${h.notFound ? '#ff9999' : 'rgba(255,255,255,.85)'};">
+        <span>${h.time}</span>
+        <span style="flex:1;text-align:left;margin-left:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${h.name}</span>
+        ${!h.notFound ? `<span style="color:var(--gold);font-weight:700;">${h.count}件</span>` : '<span>❌</span>'}
+      </div>
+    `).join('')}
+  `;
+}
+
+function closeCameraScanner() {
+  cameraScanning = false;
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+  const video = document.getElementById('cam-video');
+  if (video) video.srcObject = null;
+  closeModal('camera-scan-modal');
+}
+
+function cancelStockTake() {
+  if (!confirm('確定要取消盤點？所有已輸入的數量會丟失。')) return;
+  stockTakeData = null;
+  localStorage.removeItem('pos_stock_take_active');
+  hideStockTakeUI();
+  toast('盤點已取消', 'warn');
+}
+
+function saveStockTake(silent) {
+  if (!stockTakeData) return;
+  save('pos_stock_take_active', stockTakeData);
+  if (!silent) toast('盤點進度已暫存', 'success');
+}
+
+function applyStockTakeAdjustments() {
+  if (!stockTakeData) return;
+  const adjustments = [];
+  Object.entries(stockTakeData.items).forEach(([pid, it]) => {
+    if (it.countedQty !== null && it.countedQty !== it.systemQty) {
+      const p = products.find(x => x.id === pid);
+      if (p) adjustments.push({ p, before: it.systemQty, after: it.countedQty, diff: it.countedQty - it.systemQty });
+    }
+  });
+
+  if (!adjustments.length) {
+    toast('沒有需要調整的差異', 'success');
+    return;
+  }
+
+  const summary = adjustments.map(a => `• ${a.p.name}: ${a.before} → ${a.after}（${a.diff > 0 ? '+' : ''}${a.diff}）`).join('\n');
+  if (!confirm(`將套用以下 ${adjustments.length} 筆庫存調整：\n\n${summary.slice(0, 800)}${summary.length > 800 ? '\n...(還有更多)' : ''}\n\n確定執行？`)) return;
+
+  adjustments.forEach(a => {
+    // 把實際盤點數量寫入商品庫存
+    // 因為盤點是看「商品總庫存」，所以全部塞到第一個規格的格子（簡化處理）
+    if (!a.p.stockMap) a.p.stockMap = {};
+    const keys = Object.keys(a.p.stockMap);
+    if (keys.length === 0) {
+      a.p.stockMap['|'] = a.after;
+    } else if (keys.length === 1) {
+      a.p.stockMap[keys[0]] = a.after;
+    } else {
+      // 多規格的情況：按原比例分配；若原本全為 0 則平均
+      const oldTotal = keys.reduce((s, k) => s + (parseInt(a.p.stockMap[k]) || 0), 0);
+      if (oldTotal > 0) {
+        keys.forEach(k => {
+          a.p.stockMap[k] = Math.round((parseInt(a.p.stockMap[k]) || 0) / oldTotal * a.after);
+        });
+      } else {
+        const avg = Math.floor(a.after / keys.length);
+        const remainder = a.after - avg * keys.length;
+        keys.forEach((k, i) => { a.p.stockMap[k] = avg + (i < remainder ? 1 : 0); });
+      }
+    }
+    a.p.stock = calcStockTotal(a.p.stockMap);
+  });
+
+  save('pos_products', products);
+  toast(`✓ 已套用 ${adjustments.length} 筆庫存調整`, 'success');
+
+  // 重新讀取系統庫存到盤點記錄（讓表格顯示一致）
+  Object.keys(stockTakeData.items).forEach(pid => {
+    const p = products.find(x => x.id === pid);
+    if (p) stockTakeData.items[pid].systemQty = getProductStock(p);
+  });
+  save('pos_stock_take_active', stockTakeData);
+  renderStockTakeStats();
+  renderStockTakeTable();
+}
+
+function finishStockTake() {
+  if (!stockTakeData) return;
+  const total = Object.keys(stockTakeData.items).length;
+  const counted = Object.values(stockTakeData.items).filter(it => it.countedQty !== null).length;
+  if (counted === 0) {
+    toast('尚未盤點任何商品', 'warn');
+    return;
+  }
+  if (counted < total) {
+    if (!confirm(`還有 ${total - counted} 個商品未盤點，確定要結束？`)) return;
+  }
+  // 存入歷史
+  const record = {
+    ...stockTakeData,
+    finishedAt: new Date().toISOString(),
+    summary: {
+      total,
+      counted,
+      diffCount: Object.values(stockTakeData.items).filter(it => it.countedQty !== null && it.countedQty !== it.systemQty).length,
+    },
+    snapshot: Object.entries(stockTakeData.items).map(([pid, it]) => {
+      const p = products.find(x => x.id === pid);
+      return {
+        productId: pid,
+        productName: p?.name || '(已刪除)',
+        sku: p?.sku || '',
+        systemQty: it.systemQty,
+        countedQty: it.countedQty,
+        diff: it.countedQty !== null ? it.countedQty - it.systemQty : null,
+      };
+    }).filter(r => r.countedQty !== null),
+  };
+  stockTakeHistory.unshift(record);
+  save('pos_stock_take_history', stockTakeHistory);
+  // 清除進行中
+  stockTakeData = null;
+  localStorage.removeItem('pos_stock_take_active');
+  hideStockTakeUI();
+  toast(`✓ 盤點完成，已存入歷史紀錄`, 'success');
+}
+
+function viewStockTakeHistory() {
+  const body = document.getElementById('sthist-body');
+  if (!stockTakeHistory.length) {
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">尚無盤點歷史紀錄</div>';
+  } else {
+    body.innerHTML = stockTakeHistory.map((rec, idx) => `
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div>
+            <div style="font-weight:700;color:var(--primary);">
+              ${new Date(rec.finishedAt).toLocaleString('zh-TW')}
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);">
+              ${rec.mode === 'all' ? '全面盤點' : rec.mode === 'barcode' ? '掃條碼盤點' : '指定盤點'}
+              · 盤點 ${rec.summary.counted}/${rec.summary.total} · 差異 ${rec.summary.diffCount} 筆
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="deleteStockTakeRecord(${idx})" title="刪除此筆紀錄">🗑</button>
+        </div>
+        ${rec.snapshot.filter(s => s.diff !== 0).length > 0 ? `
+          <div style="font-size:12px;border-top:1px dashed var(--border);padding-top:8px;">
+            <div style="font-weight:600;color:var(--text-muted);margin-bottom:4px;">差異明細：</div>
+            ${rec.snapshot.filter(s => s.diff !== 0).slice(0, 5).map(s => `
+              <div style="display:flex;justify-content:space-between;padding:2px 0;">
+                <span>${s.productName}</span>
+                <span style="font-family:monospace;color:${s.diff>0?'var(--success)':'var(--danger)'};font-weight:700;">${s.systemQty} → ${s.countedQty} (${s.diff>0?'+':''}${s.diff})</span>
+              </div>
+            `).join('')}
+            ${rec.snapshot.filter(s => s.diff !== 0).length > 5 ? `<div style="color:var(--text-muted);font-size:11px;margin-top:4px;">…還有 ${rec.snapshot.filter(s => s.diff !== 0).length - 5} 筆</div>` : ''}
+          </div>
+        ` : '<div style="color:var(--success);font-size:12px;">✓ 全部相符</div>'}
+      </div>
+    `).join('');
+  }
+  openModal('sthist-modal');
+}
+
+function deleteStockTakeRecord(idx) {
+  if (!confirm('確定要刪除此盤點紀錄？')) return;
+  stockTakeHistory.splice(idx, 1);
+  save('pos_stock_take_history', stockTakeHistory);
+  viewStockTakeHistory();
+}
+
+// 開啟盤點頁時恢復未完成的盤點
+function initStockTake() {
+  if (stockTakeData) {
+    showStockTakeUI();
+  } else {
+    hideStockTakeUI();
+  }
 }
 
 // ======================== REPORT ========================
