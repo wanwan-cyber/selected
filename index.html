@@ -977,139 +977,55 @@
 
 <!-- Batch Add Modal -->
 <div class="modal-overlay" id="batch-modal">
-  <div class="modal" style="max-width:720px;">
+  <div class="modal" style="max-width:1100px;">
     <div class="modal-head">
-      <h3>📦 批次新增商品</h3>
+      <h3>📦 批次新增商品（進貨單模式）</h3>
       <button class="modal-close" onclick="closeModal('batch-modal')">×</button>
     </div>
     <div class="modal-body">
-      <div style="background:linear-gradient(135deg,#1a2e25,#2d4a3e);border-radius:10px;padding:14px 16px;margin-bottom:14px;color:#fff;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:2px;">📷 拍照辨識匯入</div>
-            <div style="font-size:11px;color:rgba(255,255,255,.75);">上傳廠商開立的進貨單/銷貨單，AI 自動辨識內容</div>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <input type="file" id="ai-scan-file" accept="image/*" capture="environment" style="display:none;" onchange="onScanFileSelected(event)">
-            <button class="btn btn-gold btn-sm" onclick="document.getElementById('ai-scan-file').click()">📷 拍照/選圖</button>
-          </div>
-        </div>
-        <div id="ai-scan-status" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(255,255,255,.1);border-radius:6px;font-size:12px;"></div>
-      </div>
-
       <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);line-height:1.6;">
-        💡 設定共通屬性後，輸入多個款號（一行一個），系統會自動建立多筆商品。每筆都會繼承共通屬性，並依「廠商首字 + 批價前2碼 + 款號後4碼」自動產生條碼。
+        💡 一張進貨單常見的情境：選擇廠商後，每列填寫一筆商品。每列可有不同的成本、售價、顏色、尺寸。條碼會自動依「廠商首字 + 批價前2碼 + 款號後4碼」產生。
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label>廠商 *</label>
-          <div class="chip-group" id="bm-vendor-chips" style="margin-bottom:4px;"></div>
-          <input type="text" id="bm-vendor-input" placeholder="新增廠商…" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();bmAddVendor();}">
-        </div>
-        <div class="form-group">
-          <label>分類</label>
-          <div class="chip-group" id="bm-cat-chips" style="margin-bottom:4px;"></div>
-          <input type="text" id="bm-cat-input" placeholder="新增分類…" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();bmAddCat();}">
-        </div>
+      <!-- 廠商選擇（整單共用） -->
+      <div style="background:var(--bg);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:700;color:var(--primary);display:block;margin-bottom:6px;">📍 廠商 *（整單共用）</label>
+        <div class="chip-group" id="bm-vendor-chips" style="margin-bottom:6px;"></div>
+        <input type="text" id="bm-vendor-input" placeholder="新增廠商…" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();bmAddVendor();}">
       </div>
 
-      <div class="form-row">
-        <div class="form-group"><label>成本價 ($) *</label><input type="number" id="bm-cost" min="0" placeholder="必填，用於產生條碼" oninput="updateBatchPreview()"></div>
-        <div class="form-group"><label>售價 ($) *</label><input type="number" id="bm-price" min="0"></div>
-        <div class="form-group" style="flex:0 0 35%;"><label>每格預設庫存</label><input type="number" id="bm-stock" min="0" value="0" placeholder="0" oninput="updateBatchPreview()"></div>
+      <!-- 進貨單列表 -->
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:#fff;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px;">
+          <thead style="background:var(--surface2);">
+            <tr>
+              <th style="padding:8px;width:30px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;">#</th>
+              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">款號 *</th>
+              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">商品名稱 *</th>
+              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">分類</th>
+              <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">成本 *</th>
+              <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">售價 *</th>
+              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">顏色</th>
+              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">尺寸</th>
+              <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">數量</th>
+              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">條碼</th>
+              <th style="padding:8px;width:30px;"></th>
+            </tr>
+          </thead>
+          <tbody id="bm-lines-body"></tbody>
+        </table>
       </div>
 
-      <div class="variant-section">
-        <h4>顏色（共通套用到所有商品）</h4>
-        <div class="chip-group" id="bm-color-chips"></div>
-        <div style="display:flex;gap:6px;margin-top:6px;">
-          <input type="text" id="bm-color-input" placeholder="新增顏色…" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();bmAddVariant('color');}">
-          <button class="btn btn-outline btn-sm" onclick="bmAddVariant('color')">＋ 新增</button>
-        </div>
-      </div>
-
-      <div class="variant-section">
-        <h4>尺寸（共通套用到所有商品）</h4>
-        <div class="chip-group" id="bm-size-chips"></div>
-        <div style="display:flex;gap:6px;margin-top:6px;">
-          <input type="text" id="bm-size-input" placeholder="新增尺寸…" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();bmAddVariant('size');}">
-          <button class="btn btn-outline btn-sm" onclick="bmAddVariant('size')">＋ 新增</button>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label>商品款號與名稱（每行一筆，格式：<code style="background:var(--surface2);padding:1px 6px;border-radius:3px;">款號 商品名稱</code>） *</label>
-        <textarea id="bm-items" rows="6" placeholder="0101 基本款棉T
-0102 雪紡飄逸上衣
-0103 高腰牛仔裙
-A205 針織開襟衫" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:monospace;line-height:1.7;resize:vertical;outline:none;background:var(--bg);" oninput="updateBatchPreview()"></textarea>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">提示：以空格分隔款號與名稱。款號只填數字也可，會自動補成 4 碼。</div>
-      </div>
-
-      <div id="bm-preview" style="display:none;">
-        <h4 style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--primary);">📋 預覽（將建立 <span id="bm-count">0</span> 筆商品）</h4>
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <thead style="position:sticky;top:0;background:var(--surface2);">
-              <tr>
-                <th style="padding:6px 10px;text-align:left;font-weight:700;color:var(--primary);">#</th>
-                <th style="padding:6px 10px;text-align:left;font-weight:700;color:var(--primary);">款號</th>
-                <th style="padding:6px 10px;text-align:left;font-weight:700;color:var(--primary);">商品名稱</th>
-                <th style="padding:6px 10px;text-align:left;font-weight:700;color:var(--primary);">條碼</th>
-                <th style="padding:6px 10px;text-align:right;font-weight:700;color:var(--primary);">總庫存</th>
-              </tr>
-            </thead>
-            <tbody id="bm-preview-body"></tbody>
-          </table>
-        </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-sm" onclick="bmAddLine()">＋ 新增一列</button>
+        <button class="btn btn-outline btn-sm" onclick="bmAddMultipleLines()">＋ 一次加多列</button>
+        <button class="btn btn-outline btn-sm" onclick="bmClearLines()" style="color:var(--danger);">🗑 清空全部</button>
+        <span id="bm-summary" style="margin-left:auto;font-size:12px;color:var(--text-muted);align-self:center;"></span>
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('batch-modal')">取消</button>
       <button class="btn btn-primary" onclick="saveBatch()">✓ 批次建立</button>
-    </div>
-  </div>
-</div>
-
-<!-- Import Review Modal (after AI scan) -->
-<div class="modal-overlay" id="import-review-modal">
-  <div class="modal" style="max-width:880px;">
-    <div class="modal-head">
-      <h3 id="import-review-title">📋 AI 辨識結果</h3>
-      <button class="modal-close" onclick="closeModal('import-review-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);line-height:1.6;">
-        ✏️ 請核對下方品項，可以直接編輯欄位。<strong>「已存在」</strong>會更新既有商品（進貨單會增加庫存），<strong>「新商品」</strong>會自動建立。
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center;font-size:12px;">
-        <span style="color:var(--text-muted);font-weight:600;">🎯 一鍵套用到所有列：</span>
-        <button class="btn btn-outline btn-sm" onclick="bulkApplyColor()" style="font-size:11px;padding:4px 10px;">🎨 統一顏色</button>
-        <button class="btn btn-outline btn-sm" onclick="bulkApplySize()" style="font-size:11px;padding:4px 10px;">📏 統一尺寸</button>
-      </div>
-      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:760px;">
-          <thead style="background:var(--surface2);">
-            <tr>
-              <th style="padding:8px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">#</th>
-              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">款號</th>
-              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">商品名稱</th>
-              <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">數量</th>
-              <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">單價</th>
-              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">顏色</th>
-              <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">尺寸</th>
-              <th style="padding:8px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;">狀態</th>
-              <th style="padding:8px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;letter-spacing:.5px;"></th>
-            </tr>
-          </thead>
-          <tbody id="import-review-body"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-outline" onclick="closeModal('import-review-modal')">取消</button>
-      <button class="btn btn-primary" onclick="confirmImport()">✓ 確認匯入</button>
     </div>
   </div>
 </div>
@@ -3570,207 +3486,276 @@ function compressImage(file, maxSize, quality) {
   });
 }
 
-// ======================== BATCH ADD ========================
-// 批次新增的內部狀態
+// ======================== BATCH ADD (進貨單模式) ========================
 let bmVendor = '';
-let bmCat = '';
-let bmColors = [];
-let bmSizes = [];
+let bmLines = []; // 每筆商品列：{ sku, name, cat, cost, price, color, size, qty }
 
 function openBatchModal() {
   bmVendor = '';
-  bmCat = '';
-  bmColors = [];
-  bmSizes = [];
-  document.getElementById('bm-cost').value = '';
-  document.getElementById('bm-price').value = '';
-  document.getElementById('bm-stock').value = 0;
-  document.getElementById('bm-items').value = '';
-  document.getElementById('bm-preview').style.display = 'none';
-  ['bm-vendor-input','bm-cat-input','bm-color-input','bm-size-input'].forEach(id => document.getElementById(id).value='');
-  renderBmChips();
+  // 預設 3 筆空白列
+  bmLines = [createEmptyLine(), createEmptyLine(), createEmptyLine()];
+  document.getElementById('bm-vendor-input').value = '';
+  renderBmVendor();
+  renderBmLines();
   openModal('batch-modal');
 }
 
-function renderBmChips() {
-  // 廠商（單選）
+function createEmptyLine() {
+  return { sku: '', name: '', cat: '', cost: '', price: '', color: '', size: '', qty: 1 };
+}
+
+function renderBmVendor() {
   const vendors = getAllVendors();
   if (bmVendor && !vendors.includes(bmVendor)) vendors.unshift(bmVendor);
   document.getElementById('bm-vendor-chips').innerHTML = vendors.length
-    ? vendors.map(v => `<span class="chip ${v===bmVendor?'selected':''}" onclick="bmSelectVendor('${v.replace(/'/g,"\\'")}')">${v}</span>`).join('')
-    : '<span style="font-size:11px;color:var(--text-muted);">尚無廠商，請從下方新增</span>';
-
-  // 分類（單選）
-  const cats = getAllCats();
-  if (bmCat && !cats.includes(bmCat)) cats.unshift(bmCat);
-  document.getElementById('bm-cat-chips').innerHTML = cats.length
-    ? cats.map(c => `<span class="chip ${c===bmCat?'selected':''}" onclick="bmSelectCat('${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
-    : '<span style="font-size:11px;color:var(--text-muted);">尚無分類，請從下方新增</span>';
-
-  // 顏色（多選）
-  const allColors = getAllColors();
-  bmColors.forEach(c => { if (!allColors.includes(c)) allColors.unshift(c); });
-  document.getElementById('bm-color-chips').innerHTML = allColors.length
-    ? allColors.map(c => `<span class="chip ${bmColors.includes(c)?'selected':''}" onclick="bmToggleVariant('color','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
-    : '<span style="font-size:12px;color:var(--text-muted);">尚無顏色，請從下方新增</span>';
-
-  // 尺寸（多選）
-  const allSizes = getAllSizes();
-  bmSizes.forEach(s => { if (!allSizes.includes(s)) allSizes.unshift(s); });
-  document.getElementById('bm-size-chips').innerHTML = allSizes.length
-    ? allSizes.map(s => `<span class="chip ${bmSizes.includes(s)?'selected':''}" onclick="bmToggleVariant('size','${s.replace(/'/g,"\\'")}')">${s}</span>`).join('')
-    : '<span style="font-size:12px;color:var(--text-muted);">尚無尺寸，請從下方新增</span>';
-
-  updateBatchPreview();
+    ? vendors.map(v => {
+        const code = getVendorCode(v);
+        return `<span class="chip ${v===bmVendor?'selected':''}" onclick="bmSelectVendor('${v.replace(/'/g,"\\'")}')">${v}${code?` <span style="font-size:10px;opacity:.7;font-family:monospace;">[${code}]</span>`:''}</span>`;
+      }).join('')
+    : '<span style="font-size:12px;color:var(--text-muted);">尚無廠商，請從下方新增</span>';
 }
 
-function bmSelectVendor(v) { bmVendor = (bmVendor === v) ? '' : v; renderBmChips(); }
-function bmSelectCat(c) { bmCat = (bmCat === c) ? '' : c; renderBmChips(); }
+function bmSelectVendor(v) {
+  bmVendor = (bmVendor === v) ? '' : v;
+  renderBmVendor();
+  renderBmLines(); // 更新條碼
+}
+
 function bmAddVendor() {
   const inp = document.getElementById('bm-vendor-input');
   const val = inp.value.trim();
   if (!val) return;
-  bmVendor = val; inp.value = ''; renderBmChips();
-}
-function bmAddCat() {
-  const inp = document.getElementById('bm-cat-input');
-  const val = inp.value.trim();
-  if (!val) return;
-  bmCat = val; inp.value = ''; renderBmChips();
-}
-function bmToggleVariant(type, val) {
-  const arr = type === 'color' ? bmColors : bmSizes;
-  const idx = arr.indexOf(val);
-  if (idx >= 0) arr.splice(idx, 1);
-  else arr.push(val);
-  renderBmChips();
-}
-function bmAddVariant(type) {
-  const inp = document.getElementById(type === 'color' ? 'bm-color-input' : 'bm-size-input');
-  const val = inp.value.trim();
-  if (!val) return;
-  const arr = type === 'color' ? bmColors : bmSizes;
-  if (!arr.includes(val)) arr.push(val);
+  bmVendor = val;
   inp.value = '';
-  renderBmChips();
+  renderBmVendor();
+  renderBmLines();
 }
 
-// 解析輸入區的款號 + 名稱
-function parseBatchItems() {
-  const raw = document.getElementById('bm-items').value;
-  return raw.split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .map(line => {
-      // 用第一個空白切分
-      const m = line.match(/^(\S+)\s+(.+)$/);
-      if (m) return { sku: m[1].trim().toUpperCase(), name: m[2].trim() };
-      // 只有一個 token → 當作名稱，款號用空
-      return { sku: '', name: line };
-    });
-}
+function renderBmLines() {
+  const tbody = document.getElementById('bm-lines-body');
+  const allColors = getAllColors();
+  const allSizes = getAllSizes();
+  const allCats = getAllCats();
+  // 把 bmLines 內已用的 color/size/cat 也加入
+  bmLines.forEach(l => {
+    if (l.color && !allColors.includes(l.color)) allColors.push(l.color);
+    if (l.size && !allSizes.includes(l.size)) allSizes.push(l.size);
+    if (l.cat && !allCats.includes(l.cat)) allCats.push(l.cat);
+  });
 
-function updateBatchPreview() {
-  const items = parseBatchItems();
-  const preview = document.getElementById('bm-preview');
-  const body = document.getElementById('bm-preview-body');
-  document.getElementById('bm-count').textContent = items.length;
-
-  if (!items.length) { preview.style.display = 'none'; return; }
-  preview.style.display = 'block';
-
-  const cost = parseFloat(document.getElementById('bm-cost').value) || 0;
-  const stockPerCell = parseInt(document.getElementById('bm-stock').value) || 0;
-  const colors = bmColors.length ? bmColors : [''];
-  const sizes = bmSizes.length ? bmSizes : [''];
-  const cellCount = colors.length * sizes.length;
-  const totalStock = stockPerCell * cellCount;
-
-  // 條碼前綴：成本前 2 位
-  let prefix = '00';
-  if (cost > 0) {
-    const costStr = String(Math.floor(cost));
-    prefix = costStr.length >= 2 ? costStr.slice(0, 2) : costStr.padStart(2, '0');
-  }
-  // 廠商代號
+  // 廠商代號（整單共用）
   const vendorCode = getVendorCode(bmVendor);
 
-  body.innerHTML = items.map((item, i) => {
-    let skuPart = item.sku || '';
-    if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
-    if (skuPart.length > 4) skuPart = skuPart.slice(-4);
-    const barcode = item.sku ? vendorCode + prefix + skuPart : '—';
-    return `<tr style="border-top:1px solid var(--border);">
-      <td style="padding:5px 10px;color:var(--text-muted);">${i+1}</td>
-      <td style="padding:5px 10px;font-family:monospace;color:var(--primary);font-weight:600;">${item.sku || '—'}</td>
-      <td style="padding:5px 10px;">${item.name}</td>
-      <td style="padding:5px 10px;font-family:monospace;color:var(--text-muted);">${barcode}</td>
-      <td style="padding:5px 10px;text-align:right;font-weight:600;color:var(--gold);">${totalStock}</td>
-    </tr>`;
+  tbody.innerHTML = bmLines.map((line, i) => {
+    // 計算此列預計條碼
+    let barcode = '';
+    if (line.sku && parseFloat(line.cost) > 0) {
+      const costStr = String(Math.floor(parseFloat(line.cost)));
+      const prefix = costStr.length >= 2 ? costStr.slice(0,2) : costStr.padStart(2,'0');
+      let skuPart = String(line.sku).trim().toUpperCase();
+      if (skuPart.length < 4) skuPart = skuPart.padStart(4,'0');
+      if (skuPart.length > 4) skuPart = skuPart.slice(-4);
+      barcode = vendorCode + prefix + skuPart;
+    }
+
+    const catOptions = allCats.map(c => `<option value="${c}" ${line.cat===c?'selected':''}>${c}</option>`).join('');
+    const colorOptions = allColors.map(c => `<option value="${c}" ${line.color===c?'selected':''}>${c}</option>`).join('');
+    const sizeOptions = allSizes.map(s => `<option value="${s}" ${line.size===s?'selected':''}>${s}</option>`).join('');
+
+    return `
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:4px 6px;text-align:center;color:var(--text-muted);font-size:11px;">${i+1}</td>
+        <td style="padding:4px 6px;"><input type="text" value="${escapeBm(line.sku)}" oninput="bmUpdateLine(${i},'sku',this.value)" placeholder="例 A001" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:monospace;text-transform:uppercase;"></td>
+        <td style="padding:4px 6px;"><input type="text" value="${escapeBm(line.name)}" oninput="bmUpdateLine(${i},'name',this.value)" placeholder="商品名稱" style="width:140px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;"></td>
+        <td style="padding:4px 6px;">
+          <select onchange="bmHandleCatChange(${i}, this)" style="width:80px;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
+            <option value="">— 無 —</option>
+            ${catOptions}
+            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增</option>
+          </select>
+        </td>
+        <td style="padding:4px 6px;"><input type="number" value="${line.cost}" min="0" oninput="bmUpdateLine(${i},'cost',this.value)" placeholder="0" style="width:65px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
+        <td style="padding:4px 6px;"><input type="number" value="${line.price}" min="0" oninput="bmUpdateLine(${i},'price',this.value)" placeholder="0" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
+        <td style="padding:4px 6px;">
+          <select onchange="bmHandleColorChange(${i}, this)" style="width:80px;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
+            <option value="">— 無 —</option>
+            ${colorOptions}
+            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增</option>
+          </select>
+        </td>
+        <td style="padding:4px 6px;">
+          <select onchange="bmHandleSizeChange(${i}, this)" style="width:70px;padding:4px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
+            <option value="">— 無 —</option>
+            ${sizeOptions}
+            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增</option>
+          </select>
+        </td>
+        <td style="padding:4px 6px;"><input type="number" value="${line.qty}" min="0" oninput="bmUpdateLine(${i},'qty',this.value)" style="width:55px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
+        <td style="padding:4px 6px;"><span style="font-family:monospace;font-size:11px;color:${barcode?'var(--gold)':'var(--text-muted)'};font-weight:700;">${barcode || '—'}</span></td>
+        <td style="padding:4px 6px;text-align:center;"><button onclick="bmRemoveLine(${i})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px;padding:2px 4px;" title="刪除">🗑</button></td>
+      </tr>
+    `;
   }).join('');
+
+  // 摘要
+  const validCount = bmLines.filter(l => l.sku && l.name && parseFloat(l.cost) > 0 && parseFloat(l.price) > 0).length;
+  const totalQty = bmLines.reduce((s, l) => s + (parseInt(l.qty) || 0), 0);
+  const totalCost = bmLines.reduce((s, l) => s + (parseFloat(l.cost) || 0) * (parseInt(l.qty) || 0), 0);
+  document.getElementById('bm-summary').innerHTML = `共 <strong style="color:var(--primary);">${validCount}</strong> 筆有效資料、<strong>${totalQty}</strong> 件、進貨成本 <strong style="color:var(--gold);">$${totalCost.toLocaleString()}</strong>`;
+}
+
+function escapeBm(s) {
+  return String(s || '').replace(/"/g, '&quot;');
+}
+
+function bmUpdateLine(i, field, value) {
+  if (!bmLines[i]) return;
+  bmLines[i][field] = value;
+  // 條碼即時更新只需要重繪
+  renderBmLines();
+}
+
+function bmHandleCatChange(i, sel) {
+  if (sel.value === '__new__') {
+    const v = prompt('請輸入新分類：', '');
+    if (v && v.trim()) {
+      bmLines[i].cat = v.trim();
+    } else {
+      sel.value = bmLines[i].cat || '';
+      return;
+    }
+  } else {
+    bmLines[i].cat = sel.value;
+  }
+  renderBmLines();
+}
+
+function bmHandleColorChange(i, sel) {
+  if (sel.value === '__new__') {
+    const v = prompt('請輸入新顏色：', '');
+    if (v && v.trim()) {
+      bmLines[i].color = v.trim();
+    } else {
+      sel.value = bmLines[i].color || '';
+      return;
+    }
+  } else {
+    bmLines[i].color = sel.value;
+  }
+  renderBmLines();
+}
+
+function bmHandleSizeChange(i, sel) {
+  if (sel.value === '__new__') {
+    const v = prompt('請輸入新尺寸：', '');
+    if (v && v.trim()) {
+      bmLines[i].size = v.trim();
+    } else {
+      sel.value = bmLines[i].size || '';
+      return;
+    }
+  } else {
+    bmLines[i].size = sel.value;
+  }
+  renderBmLines();
+}
+
+function bmAddLine() {
+  bmLines.push(createEmptyLine());
+  renderBmLines();
+}
+
+function bmAddMultipleLines() {
+  const n = prompt('要新增幾列？', '5');
+  const num = parseInt(n);
+  if (!num || num < 1 || num > 100) { toast('請輸入 1-100 之間的數字', 'warn'); return; }
+  for (let i = 0; i < num; i++) bmLines.push(createEmptyLine());
+  renderBmLines();
+  toast(`已新增 ${num} 列`, 'success');
+}
+
+function bmRemoveLine(i) {
+  bmLines.splice(i, 1);
+  if (!bmLines.length) bmLines.push(createEmptyLine()); // 至少留一列
+  renderBmLines();
+}
+
+function bmClearLines() {
+  if (!confirm('確定清空所有列？')) return;
+  bmLines = [createEmptyLine()];
+  renderBmLines();
 }
 
 function saveBatch() {
-  const items = parseBatchItems();
-  if (!items.length) { toast('請輸入至少一個商品款號與名稱', 'error'); return; }
-
-  const cost = parseFloat(document.getElementById('bm-cost').value) || 0;
-  const price = parseFloat(document.getElementById('bm-price').value) || 0;
-  const stockPerCell = parseInt(document.getElementById('bm-stock').value) || 0;
-
   if (!bmVendor) { toast('請選擇或新增廠商', 'error'); return; }
-  if (cost <= 0) { toast('請填入成本價', 'error'); return; }
-  if (price <= 0) { toast('請填入售價', 'error'); return; }
 
-  // 計算條碼前綴
-  const costStr = String(Math.floor(cost));
-  const prefix = costStr.length >= 2 ? costStr.slice(0, 2) : costStr.padStart(2, '0');
+  // 過濾有效列：必須有款號、商品名、成本、售價
+  const valid = bmLines.filter(l =>
+    l.sku && String(l.sku).trim() &&
+    l.name && l.name.trim() &&
+    parseFloat(l.cost) > 0 &&
+    parseFloat(l.price) > 0
+  );
+
+  if (!valid.length) {
+    toast('沒有任何完整的商品列（需要款號、名稱、成本、售價）', 'error');
+    return;
+  }
 
   // 廠商代號
   const vendorCode = getVendorCode(bmVendor);
 
-  // 驗證款號和條碼唯一性
-  const newSkus = new Set();
+  // 驗證條碼唯一性
   const newBarcodes = new Set();
-  for (const item of items) {
-    if (!item.sku) continue;
-    let skuPart = item.sku;
-    if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
+  for (const l of valid) {
+    const cost = parseFloat(l.cost);
+    const costStr = String(Math.floor(cost));
+    const prefix = costStr.length >= 2 ? costStr.slice(0,2) : costStr.padStart(2,'0');
+    let skuPart = String(l.sku).trim().toUpperCase();
+    if (skuPart.length < 4) skuPart = skuPart.padStart(4,'0');
     if (skuPart.length > 4) skuPart = skuPart.slice(-4);
     const barcode = vendorCode + prefix + skuPart;
-    if (newBarcodes.has(barcode)) { toast(`款號 ${item.sku} 在本次批次內重複`, 'error'); return; }
-    if (products.some(p => p.barcode === barcode)) { toast(`條碼 ${barcode}（款號 ${item.sku}）已存在於商品庫`, 'error'); return; }
+    if (newBarcodes.has(barcode)) { toast(`款號 ${l.sku} 在本次批次內重複`, 'error'); return; }
+    if (products.some(p => p.barcode === barcode)) { toast(`條碼 ${barcode}（款號 ${l.sku}）已存在`, 'error'); return; }
     newBarcodes.add(barcode);
   }
 
-  // 建立 stockMap
-  const colors = bmColors.length ? bmColors : [''];
-  const sizes = bmSizes.length ? bmSizes : [''];
-  const stockMap = {};
-  colors.forEach(c => sizes.forEach(s => { stockMap[c + '|' + s] = stockPerCell; }));
-  const totalStock = stockPerCell * colors.length * sizes.length;
-
   // 建立商品
-  items.forEach(item => {
-    let skuPart = item.sku || '';
-    if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
+  let createdCount = 0;
+  valid.forEach(l => {
+    const cost = parseFloat(l.cost);
+    const price = parseFloat(l.price);
+    const qty = parseInt(l.qty) || 0;
+    const costStr = String(Math.floor(cost));
+    const prefix = costStr.length >= 2 ? costStr.slice(0,2) : costStr.padStart(2,'0');
+    let skuPart = String(l.sku).trim().toUpperCase();
+    if (skuPart.length < 4) skuPart = skuPart.padStart(4,'0');
     if (skuPart.length > 4) skuPart = skuPart.slice(-4);
-    const barcode = item.sku ? vendorCode + prefix + skuPart : '';
+    const barcode = vendorCode + prefix + skuPart;
+
+    const colorArr = l.color ? [l.color] : [];
+    const sizeArr = l.size ? [l.size] : [];
+    const stockMap = {};
+    stockMap[(l.color||'') + '|' + (l.size||'')] = qty;
+
     products.push({
       id: uid(),
-      name: item.name,
-      cat: bmCat,
+      name: l.name.trim(),
+      cat: l.cat || '',
       vendor: bmVendor,
-      sku: item.sku || '',
+      sku: String(l.sku).trim().toUpperCase(),
       barcode,
-      price,
-      cost,
-      colors: [...bmColors],
-      sizes: [...bmSizes],
-      stockMap: { ...stockMap },
-      stock: totalStock,
+      price, cost,
+      colors: colorArr,
+      sizes: sizeArr,
+      stockMap,
+      stock: qty,
+      images: [],
+      image: '',
+      link: '',
       note: '',
     });
+    createdCount++;
   });
 
   save('pos_products', products);
@@ -3778,409 +3763,9 @@ function saveBatch() {
   renderProducts();
   renderCatBar();
   closeModal('batch-modal');
-  toast(`已批次建立 ${items.length} 筆商品`, 'success');
+  toast(`✓ 已批次建立 ${createdCount} 筆商品`, 'success');
 }
 
-// ======================== AI SCAN IMPORT ========================
-let aiScanResults = []; // 暫存 AI 辨識出的品項
-let aiScanDocType = ''; // 'purchase' 進貨 | 'sales' 銷貨
-
-async function onScanFileSelected(event) {
-  const file = event.target.files[0];
-  event.target.value = ''; // reset so same file can be selected again
-  if (!file) return;
-  if (!file.type.startsWith('image/')) { toast('請選擇圖片檔案', 'error'); return; }
-
-  // 先讓使用者選單據類型
-  const docType = confirm('這是進貨單嗎？\n\n按【確定】= 進貨單（增加庫存）\n按【取消】= 銷貨單（建立商品資料）') ? 'purchase' : 'sales';
-  aiScanDocType = docType;
-
-  const statusEl = document.getElementById('ai-scan-status');
-  statusEl.style.display = 'block';
-  statusEl.innerHTML = '⏳ AI 辨識中...請稍候（約 10-30 秒）';
-  statusEl.style.background = 'rgba(201,168,76,.2)';
-
-  try {
-    // 將圖片轉為 base64
-    const base64Data = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result.split(',')[1]);
-      r.onerror = () => rej(new Error('讀取檔案失敗'));
-      r.readAsDataURL(file);
-    });
-
-    const mediaType = file.type;
-    const docTypeLabel = docType === 'purchase' ? '進貨單' : '銷貨單';
-
-    const prompt = `這是一張服飾零售業的${docTypeLabel}照片。請仔細辨識單據上所有商品品項，回傳「純 JSON 陣列」格式，不要包含任何 markdown 標記或前後說明文字。
-
-每個品項物件應包含以下欄位：
-- sku: 貨號/款號（字串，盡可能保留完整貨號，例如 "23I21003-LYG" 或 "7359770"）
-- name: 商品名稱（字串）
-- qty: 數量（數字）
-- price: 單價（數字，沒有則填 0）
-- subtotal: 小計（數字，沒有則填 0）
-- color: 顏色（字串，若單據上有寫，例如 "黑色"、"多色"，沒寫則填空字串）
-- size: 尺寸（字串，例如 "F"、"S"、"M"，沒寫則填空字串）
-
-範例格式：
-[{"sku":"23I21003-LYG","name":"小花英文上衣","qty":1,"price":320,"subtotal":320,"color":"黑色","size":"F"}]
-
-請辨識所有品項並回傳 JSON 陣列。`;
-
-    const proxyUrl = 'https://pos-ai.n2abc5210.workers.dev';
-    const response = await fetch(proxyUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 4000,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType, data: base64Data } },
-            { type: "text", text: prompt }
-          ]
-        }]
-      })
-    });
-
-    if (!response.ok) throw new Error(`API 錯誤 ${response.status}`);
-    const data = await response.json();
-    const text = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n');
-
-    // 清理可能的 markdown 圍欄
-    const clean = text.replace(/```json|```/g, '').trim();
-    // 嘗試擷取 JSON 陣列
-    const arrMatch = clean.match(/\[[\s\S]*\]/);
-    if (!arrMatch) throw new Error('AI 回傳的格式無法解析');
-    const items = JSON.parse(arrMatch[0]);
-
-    if (!Array.isArray(items) || !items.length) {
-      throw new Error('AI 沒有辨識到品項，請確認照片清晰度');
-    }
-
-    aiScanResults = items;
-    statusEl.innerHTML = `✅ 辨識成功！共 ${items.length} 筆品項<br><button onclick="forceOpenReview()" style="margin-top:8px;background:var(--gold);color:#fff;border:none;padding:8px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">📋 點此開啟核對視窗</button>`;
-    statusEl.style.background = 'rgba(39,174,96,.2)';
-
-    // 強制切換：手機 Safari 對 setTimeout 切換 modal 不穩定，改用 requestAnimationFrame
-    try {
-      renderImportReview();
-      const batchModal = document.getElementById('batch-modal');
-      if (batchModal) batchModal.classList.remove('open');
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const reviewModal = document.getElementById('import-review-modal');
-          if (reviewModal) {
-            reviewModal.classList.add('open');
-            const body = reviewModal.querySelector('.modal-body');
-            if (body) body.scrollTop = 0;
-          }
-        });
-      });
-    } catch (e) {
-      console.error('開啟核對視窗失敗', e);
-      setTimeout(() => {
-        closeModal('batch-modal');
-        openImportReviewModal();
-      }, 100);
-    }
-
-  } catch (err) {
-    console.error(err);
-    statusEl.innerHTML = `❌ 辨識失敗：${err.message || err}`;
-    statusEl.style.background = 'rgba(192,57,43,.25)';
-    toast('AI 辨識失敗，請檢查網路或重新拍照', 'error');
-  }
-}
-
-// === 匯入核對 Modal ===
-function openImportReviewModal() {
-  // 清掉舊的廠商選擇器
-  const oldPicker = document.getElementById('import-vendor-picker');
-  if (oldPicker) oldPicker.remove();
-  renderImportReview();
-  openModal('import-review-modal');
-}
-
-// 手動開啟核對視窗（自動切換失敗時的救援按鈕）
-function forceOpenReview() {
-  if (!aiScanResults.length) {
-    toast('沒有辨識結果可顯示', 'warn');
-    return;
-  }
-  closeModal('batch-modal');
-  setTimeout(() => {
-    openImportReviewModal();
-  }, 50);
-}
-
-function renderImportReview() {
-  const tbody = document.getElementById('import-review-body');
-  const docTypeLabel = aiScanDocType === 'purchase' ? '進貨單' : '銷貨單';
-  document.getElementById('import-review-title').textContent =
-    `📋 AI 辨識結果（${docTypeLabel}）— 共 ${aiScanResults.length} 筆`;
-
-  // 蒐集現有所有顏色 / 尺寸供選擇
-  const allColors = getAllColors();
-  const allSizes = getAllSizes();
-  // 並把 AI 辨識出來、但不在現有清單的顏色/尺寸也加入
-  aiScanResults.forEach(item => {
-    if (item.color && !allColors.includes(item.color)) allColors.push(item.color);
-    if (item.size && !allSizes.includes(item.size)) allSizes.push(item.size);
-  });
-
-  // 預先比對既有商品（依款號）
-  tbody.innerHTML = aiScanResults.map((item, idx) => {
-    const existing = item.sku ? products.find(p => p.sku && (p.sku === item.sku || p.sku === item.sku.toUpperCase() || item.sku.includes(p.sku))) : null;
-    const statusBadge = existing
-      ? `<span class="badge badge-green" title="已比對到既有商品">已存在</span>`
-      : `<span class="badge badge-orange" title="將建立為新商品">新商品</span>`;
-
-    // 顏色下拉（datalist 風格：可選可打）
-    const colorOptions = allColors.map(c =>
-      `<option value="${escapeHtml(c)}" ${item.color === c ? 'selected' : ''}>${escapeHtml(c)}</option>`
-    ).join('');
-    // 尺寸下拉
-    const sizeOptions = allSizes.map(s =>
-      `<option value="${escapeHtml(s)}" ${item.size === s ? 'selected' : ''}>${escapeHtml(s)}</option>`
-    ).join('');
-
-    return `
-      <tr style="border-top:1px solid var(--border);" data-idx="${idx}">
-        <td style="padding:6px 8px;text-align:center;color:var(--text-muted);font-size:11px;">${idx+1}</td>
-        <td style="padding:4px 6px;"><input type="text" value="${escapeHtml(item.sku||'')}" oninput="updateScanItem(${idx},'sku',this.value)" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:monospace;"></td>
-        <td style="padding:4px 6px;"><input type="text" value="${escapeHtml(item.name||'')}" oninput="updateScanItem(${idx},'name',this.value)" style="width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;"></td>
-        <td style="padding:4px 6px;"><input type="number" value="${item.qty||1}" min="1" oninput="updateScanItem(${idx},'qty',parseInt(this.value)||1)" style="width:55px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
-        <td style="padding:4px 6px;"><input type="number" value="${item.price||0}" min="0" oninput="updateScanItem(${idx},'price',parseFloat(this.value)||0)" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;"></td>
-        <td style="padding:4px 6px;">
-          <select onchange="onScanColorChange(${idx}, this)" style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
-            <option value="">— 無 —</option>
-            ${colorOptions}
-            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增顏色…</option>
-          </select>
-        </td>
-        <td style="padding:4px 6px;">
-          <select onchange="onScanSizeChange(${idx}, this)" style="width:70px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#fff;">
-            <option value="">— 無 —</option>
-            ${sizeOptions}
-            <option value="__new__" style="color:var(--gold);font-weight:700;">＋ 新增尺寸…</option>
-          </select>
-        </td>
-        <td style="padding:6px 8px;text-align:center;">${statusBadge}</td>
-        <td style="padding:6px 8px;text-align:center;"><button onclick="removeScanItem(${idx})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px;padding:2px 6px;" title="移除此筆">🗑</button></td>
-      </tr>
-    `;
-  }).join('') || '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted);">無辨識結果</td></tr>';
-}
-
-function onScanColorChange(idx, sel) {
-  if (sel.value === '__new__') {
-    const newColor = prompt('請輸入新顏色名稱：', '');
-    if (newColor && newColor.trim()) {
-      const trimmed = newColor.trim();
-      aiScanResults[idx].color = trimmed;
-      renderImportReview(); // 重繪以加入新選項
-    } else {
-      sel.value = aiScanResults[idx].color || '';
-    }
-  } else {
-    updateScanItem(idx, 'color', sel.value);
-  }
-}
-
-function onScanSizeChange(idx, sel) {
-  if (sel.value === '__new__') {
-    const newSize = prompt('請輸入新尺寸：', '');
-    if (newSize && newSize.trim()) {
-      const trimmed = newSize.trim();
-      aiScanResults[idx].size = trimmed;
-      renderImportReview();
-    } else {
-      sel.value = aiScanResults[idx].size || '';
-    }
-  } else {
-    updateScanItem(idx, 'size', sel.value);
-  }
-}
-
-// 一鍵套用顏色到所有列
-function bulkApplyColor() {
-  if (!aiScanResults.length) return;
-  const allColors = getAllColors();
-  const hint = allColors.length ? `\n\n現有顏色：${allColors.join('、')}` : '';
-  const color = prompt(`請輸入顏色，將套用到全部 ${aiScanResults.length} 筆品項：${hint}`, aiScanResults[0].color || '');
-  if (color === null) return;
-  const trimmed = color.trim();
-  aiScanResults.forEach(item => { item.color = trimmed; });
-  renderImportReview();
-  toast(`✓ 已套用顏色「${trimmed || '無'}」到全部 ${aiScanResults.length} 筆`, 'success');
-}
-
-// 一鍵套用尺寸到所有列
-function bulkApplySize() {
-  if (!aiScanResults.length) return;
-  const allSizes = getAllSizes();
-  const hint = allSizes.length ? `\n\n現有尺寸：${allSizes.join('、')}` : '';
-  const size = prompt(`請輸入尺寸，將套用到全部 ${aiScanResults.length} 筆品項：${hint}`, aiScanResults[0].size || '');
-  if (size === null) return;
-  const trimmed = size.trim();
-  aiScanResults.forEach(item => { item.size = trimmed; });
-  renderImportReview();
-  toast(`✓ 已套用尺寸「${trimmed || '無'}」到全部 ${aiScanResults.length} 筆`, 'success');
-}
-
-function updateScanItem(idx, field, value) {
-  if (aiScanResults[idx]) aiScanResults[idx][field] = value;
-}
-function removeScanItem(idx) {
-  aiScanResults.splice(idx, 1);
-  renderImportReview();
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-// 詢問廠商後執行匯入
-function confirmImport() {
-  if (!aiScanResults.length) { toast('沒有品項可匯入', 'error'); return; }
-
-  // 在核對視窗內顯示廠商選擇區（取代 prompt 對話框，手機才能正常用）
-  showVendorPickerForImport();
-}
-
-function showVendorPickerForImport() {
-  const vendorList = getAllVendors();
-  // 在 modal-body 底部插入廠商選擇器（如果還沒有）
-  let picker = document.getElementById('import-vendor-picker');
-  if (picker) picker.remove();
-
-  picker = document.createElement('div');
-  picker.id = 'import-vendor-picker';
-  picker.style.cssText = 'background:#fffbf0;border:2px solid var(--gold);border-radius:8px;padding:14px;margin-top:14px;';
-  picker.innerHTML = `
-    <div style="font-weight:700;color:var(--primary);margin-bottom:10px;font-size:13px;">📍 請選擇或輸入廠商名稱：</div>
-    ${vendorList.length ? `
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-        ${vendorList.map(v => `<span class="chip" onclick="selectImportVendor('${v.replace(/'/g, "\\'")}')">${v}</span>`).join('')}
-      </div>
-    ` : ''}
-    <div style="display:flex;gap:6px;">
-      <input type="text" id="import-vendor-input" placeholder="輸入廠商名稱..." style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;" onkeydown="if(event.key==='Enter'){event.preventDefault();doImportWithVendor();}">
-      <button class="btn btn-primary btn-sm" onclick="doImportWithVendor()" style="white-space:nowrap;">✓ 確認匯入</button>
-    </div>
-  `;
-  document.querySelector('#import-review-modal .modal-body').appendChild(picker);
-  // 自動聚焦並滾動到底
-  setTimeout(() => {
-    document.getElementById('import-vendor-input').focus();
-    picker.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, 100);
-}
-
-function selectImportVendor(v) {
-  document.getElementById('import-vendor-input').value = v;
-  doImportWithVendor();
-}
-
-function doImportWithVendor() {
-  const vendor = document.getElementById('import-vendor-input').value.trim();
-  if (!vendor) { toast('請輸入或選擇廠商', 'warn'); return; }
-  performImport(vendor);
-}
-
-function performImport(vendorTrim) {
-  let createdCount = 0;
-  let updatedCount = 0;
-
-  aiScanResults.forEach(item => {
-    if (!item.name || !item.name.trim()) return;
-    const qty = parseInt(item.qty) || 1;
-    const price = parseFloat(item.price) || 0;
-    const skuRaw = (item.sku || '').toString().trim().toUpperCase();
-    const color = (item.color || '').trim();
-    const size = (item.size || '').trim();
-    // 「多色」這種統稱不當作個別顏色
-    const realColor = (color === '多色' || color === '多種' || color === '綜合') ? '' : color;
-
-    // 比對既有商品（依款號）
-    let existing = null;
-    if (skuRaw) {
-      existing = products.find(p => p.sku && (p.sku === skuRaw || skuRaw.includes(p.sku) || p.sku.includes(skuRaw)));
-    }
-
-    if (existing) {
-      // 已存在 → 增加庫存
-      const colorKey = realColor;
-      const sizeKey = size;
-      // 若該規格已存在，累加；否則新增
-      if (!existing.stockMap) existing.stockMap = {};
-      if (realColor && !existing.colors.includes(realColor)) existing.colors.push(realColor);
-      if (size && !existing.sizes.includes(size)) existing.sizes.push(size);
-      const key = colorKey + '|' + sizeKey;
-      // 進貨：加庫存；銷貨：不動庫存（只當資料來源）
-      if (aiScanDocType === 'purchase') {
-        existing.stockMap[key] = (parseInt(existing.stockMap[key]) || 0) + qty;
-        existing.stock = calcStockTotal(existing.stockMap);
-      }
-      // 進貨單上的單價當作成本參考、銷貨單上的單價當作售價參考（若原本沒有）
-      if (aiScanDocType === 'purchase' && !existing.cost && price > 0) existing.cost = price;
-      if (aiScanDocType === 'sales' && !existing.price && price > 0) existing.price = price;
-      updatedCount++;
-    } else {
-      // 新商品
-      const colorArr = realColor ? [realColor] : [];
-      const sizeArr = size ? [size] : [];
-      const stockMap = {};
-      const stockKey = (realColor || '') + '|' + (size || '');
-      // 進貨單：初始庫存 = 數量；銷貨單：初始庫存 0（純建檔）
-      stockMap[stockKey] = aiScanDocType === 'purchase' ? qty : 0;
-
-      // 條碼：廠商代號 + 成本前 2 碼 + sku 後 4 碼（若有）
-      let barcode = '';
-      if (skuRaw && price > 0) {
-        const costStr = String(Math.floor(price));
-        const prefix = costStr.length >= 2 ? costStr.slice(0,2) : costStr.padStart(2,'0');
-        // 從 sku 抽取最後 4 碼數字英數
-        let skuTail = skuRaw.replace(/[^0-9A-Z]/g,'');
-        if (skuTail.length > 4) skuTail = skuTail.slice(-4);
-        if (skuTail.length < 4) skuTail = skuTail.padStart(4,'0');
-        // 廠商代號
-        const vendorCode = getVendorCode(vendorTrim);
-        barcode = vendorCode + prefix + skuTail;
-        // 條碼衝突就不設
-        if (products.some(p => p.barcode === barcode)) barcode = '';
-      }
-
-      const newProd = {
-        id: uid(),
-        name: item.name.trim(),
-        cat: '',
-        vendor: vendorTrim,
-        sku: skuRaw,
-        barcode,
-        // 進貨單上的單價 = 成本；銷貨單上的單價 = 售價
-        price: aiScanDocType === 'sales' ? price : 0,
-        cost: aiScanDocType === 'purchase' ? price : 0,
-        colors: colorArr,
-        sizes: sizeArr,
-        stockMap,
-        stock: stockMap[stockKey],
-        note: aiScanDocType === 'purchase' ? `AI匯入(進貨)` : `AI匯入(銷貨)`,
-      };
-      products.push(newProd);
-      createdCount++;
-    }
-  });
-
-  save('pos_products', products);
-  renderProductsTable(); renderProducts(); renderCatBar();
-  closeModal('import-review-modal');
-  toast(`✅ 匯入完成：新增 ${createdCount} 筆、更新 ${updatedCount} 筆`, 'success');
-  aiScanResults = [];
-}
 
 // ======================== MEMBERS MANAGEMENT ========================
 function renderMemberCards() {
