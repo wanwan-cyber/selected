@@ -813,7 +813,7 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label>商品條碼 <span style="font-weight:400;color:var(--text-muted);font-size:11px;">（批價前2碼 + 款號後4碼）</span></label>
+          <label>商品條碼 <span style="font-weight:400;color:var(--text-muted);font-size:11px;">（廠商首字 + 批價前2碼 + 款號後4碼）</span></label>
           <div style="display:flex;gap:6px;">
             <input type="text" id="pm-barcode" placeholder="例：581234" style="flex:1;font-family:monospace;letter-spacing:1px;">
             <button class="btn btn-outline btn-sm" onclick="autoGenBarcode()" title="依成本+款號產生">🎲 產生</button>
@@ -839,6 +839,13 @@
         <div style="display:flex;gap:6px;margin-top:6px;">
           <input type="text" id="pm-vendor-input" placeholder="新增廠商…" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addNewVendor();}">
           <button class="btn btn-outline btn-sm" onclick="addNewVendor()">＋ 新增</button>
+        </div>
+        <div id="pm-vendor-code-row" style="display:none;margin-top:10px;background:#fffbf0;border:1px solid var(--gold);border-radius:6px;padding:8px 12px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="font-size:12px;font-weight:600;color:var(--primary);">廠商代號 <span style="font-weight:400;color:var(--text-muted);">（條碼首字）</span></label>
+            <input type="text" id="pm-vendor-code" maxlength="1" style="width:42px;padding:4px 6px;border:1px solid var(--gold);border-radius:6px;font-size:16px;font-family:monospace;font-weight:800;text-align:center;text-transform:uppercase;background:#fff;" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');saveCurrentVendorCode()">
+            <span style="font-size:11px;color:var(--text-muted);" id="pm-vendor-code-hint"></span>
+          </div>
         </div>
       </div>
       <div class="variant-section">
@@ -974,7 +981,7 @@
       </div>
 
       <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--primary);line-height:1.6;">
-        💡 設定共通屬性後，輸入多個款號（一行一個），系統會自動建立多筆商品。每筆都會繼承共通屬性，並依「批價前2碼 + 款號後4碼」自動產生條碼。
+        💡 設定共通屬性後，輸入多個款號（一行一個），系統會自動建立多筆商品。每筆都會繼承共通屬性，並依「廠商首字 + 批價前2碼 + 款號後4碼」自動產生條碼。
       </div>
 
       <div class="form-row">
@@ -2130,6 +2137,77 @@ let pmStockMap = {}; // key = "color|size"
 // 蒐集所有現有的候選項
 function getAllCats() { return [...new Set(products.map(p => p.cat).filter(Boolean))].sort(); }
 function getAllVendors() { return [...new Set(products.map(p => p.vendor).filter(Boolean))].sort(); }
+
+// ======================== 廠商代號 ========================
+// 廠商代號對照表（廠商名稱 → 1 個字母代號）
+let vendorCodes = load('pos_vendor_codes', {});
+
+function getVendorCode(vendor) {
+  if (!vendor) return '';
+  // 已設定 → 直接回傳
+  if (vendorCodes[vendor]) return vendorCodes[vendor].toUpperCase();
+  // 未設定 → 自動推算
+  return autoVendorCode(vendor);
+}
+
+function setVendorCode(vendor, code) {
+  if (!vendor) return;
+  const clean = (code || '').trim().toUpperCase().slice(0, 1);
+  if (clean && /[A-Z0-9]/.test(clean)) {
+    vendorCodes[vendor] = clean;
+  } else {
+    delete vendorCodes[vendor];
+  }
+  save('pos_vendor_codes', vendorCodes);
+}
+
+// 自動推算廠商代號（中文取拼音首字母、英文取首字）
+function autoVendorCode(name) {
+  if (!name) return '';
+  // 取第一個字元
+  const c = name.trim().charAt(0);
+  // 英文/數字直接大寫
+  if (/[A-Za-z0-9]/.test(c)) return c.toUpperCase();
+  // 中文 → 簡易拼音首字對照
+  return pinyinFirstLetter(c) || '';
+}
+
+// 簡易中文 → 拼音首字母對照（常見字）
+function pinyinFirstLetter(ch) {
+  // 用 Unicode 範圍粗略判斷拼音首字（不完美但對大部分常用字有效）
+  const code = ch.charCodeAt(0);
+  if (code < 0x4e00 || code > 0x9fff) return '';
+  // 拼音字典表（部分常用首字）
+  const dict = {
+    'B': '巴吧爸把白百拜班般板版伴半瓣办报抱杯背贝倍备本笨崩比必币毕逼鼻鄙比闭碧蓖避边编贬便变遍辨标表别宾冰兵丙并病拨波博伯不布步部',
+    'P': '怕拍排牌派攀盘判旁胖抛跑泡培陪佩配喷盆朋鹏捧碰批披皮疲匹片偏便骗漂飘票拼贫品平评凭瓶迫破剖普谱',
+    'M': '妈麻马吗买卖迈麦满慢漫芒忙猫毛茂冒帽枚梅煤每美妹门们梦弥米眠绵免面苗秒民敏明命摸模磨末莫墨默母牡木目沐美',
+    'F': '发法翻凡烦反返犯饭泛方房放飞非肥废费分粉份风封锋疯峰冯逢凤奉佛否夫扶服弗福府父复腹覆',
+    'D': '搭达答打大代带袋待戴单担丹胆但当党档刀导岛倒到道得德灯等低敌底地弟帝点店典电垫雕调掉跌迭丁顶定订丢东冬动栋懂洞都豆斗读独度短锻段断对队队多夺',
+    'T': '塌他它她台太抬态泰摊弹谈坦炭探汤唐糖躺烫桃逃讨套特疼藤腾踢提题体替天田填挑条调跳贴铁停廷亭挺通同童铜统痛偷头投透秃图涂土团推退吞屯托脱',
+    'N': '拿哪那纳奶南难脑闹内嫩能你尼泥年念娘鸟尿您拧牛农怒女',
+    'L': '拉啦来兰蓝懒滥廊狼浪劳老乐勒雷类冷离梨李里理礼力立连联恋链良两亮辆量料列烈林临邻铃零领令另留刘流柳六龙隆楼漏路炉鲁陆录路旅律虑略论罗骆落',
+    'G': '该改盖干甘赶感冈刚港高搞告哥歌革格隔个根跟更耕公功宫共贡狗够姑古股骨故顾刮挂关观官管贯光广归规鬼贵滚棍国果过',
+    'K': '咖卡开看康抗考靠科可克客肯空孔口扣枯哭苦库裤夸快宽款狂矿亏葵昆困扩',
+    'H': '哈孩海害含寒函喊汉旱航豪好号河和何核合何鹤黑很恨横衡轰红宏弘后厚候忽呼胡湖虎护花华滑画话怀坏欢环还换皇黄惶恍灰回汇会绘悔毁慧昏婚活火货获或',
+    'J': '机鸡积基绩激及级即急吉籍几记纪计技际既家加佳价架嘉假坚间监兼检见件健剑建江将姜讲交郊浇骄角脚教叫较节街阶接揭杰结解界借介金今津紧近进京经晶井景净静境镜居局橘举句巨拒据距聚卷决绝',
+    'Q': '七妻齐其奇骑期欺漆其旗起气器企汽弃恰千牵铅前钱潜浅枪强抢敲乔桥巧切窃且亲秦琴芹勤青轻倾清情请庆穷秋求球区曲取趣去权全泉缺',
+    'X': '西吸希夕昔息惜稀溪习席袭洗喜系细虾下吓夏先仙鲜显险县献现限线相向香乡象项消小晓孝校笑些歇协斜邪谢心新薪信兴星行型醒幸性休修须徐许序续宣选学雪血讯训寻',
+    'Z': '杂栽再在咱赞早造则责增曾扎闸眨炸摘宅窄债债战占站张章丈仗找照赵这浙真针争挣正政之支知止指至治制中众种重周州洲粥轴宙昼朱猪竹主住注柱祝专砖转赚装壮状追准着卓桌灼着自字宗综总走奏租足族祖钻最罪尊作昨左做',
+    'C': '擦猜才材财采踩参餐残惭蚕产场常长肠唱抄朝车彻臣陈晨成承城吃池迟持赤翅冲虫崇宠抽仇丑出初除楚处穿船窗床创吹春纯瓷词此次从粗醋促',
+    'S': '撒洒赛三散桑丧扫嫂色森杀沙刹砂啥晒山闪扇善伤商上烧勺少社设申身深神审升生声胜师诗失十时识使史驶始世市事侍试视室是似手守首寿瘦书叔输蔬熟暑鼠属术树数刷耍衰摔甩双谁水睡顺说硕思斯撕死四似松送苏俗诉素速宿算虽随岁碎所索锁',
+    'R': '然燃染让饶绕惹热人忍认任扔仍日容融柔肉如儒入软若弱',
+    'Y': '压押鸦鸭牙呀芽涯崖雅亚咽烟严研盐颜眼演宴央杨阳洋仰养样妖摇遥要钥腰邀爷也页夜液一伊衣依医宜移遗仪椅已以亿艺忆议异役易益意因引饮印应英樱鹰营硬影映拥永泳勇用幽优悠由犹油游友有又右诱于予余鱼愉舆愚渔与宇羽雨语玉育郁御冤元员园原圆远院愿约月乐越云匀允运熨',
+    'W': '挖瓦袜歪外弯丸完玩晚碗万王往望危威微违围唯尾委伟伪未位味畏胃慰魏温文闻稳问翁我握乌污屋无吴五午舞物务勿误雾',
+    'A': '阿啊矮爱安按案暗鞍',
+    'E': '俄鹅儿而耳尔二贰',
+    'O': '哦欧偶呕'
+  };
+  for (const [letter, chars] of Object.entries(dict)) {
+    if (chars.indexOf(ch) >= 0) return letter;
+  }
+  return ''; // 找不到拼音
+}
 function getAllColors() { return [...new Set(products.flatMap(p => p.colors || []).filter(Boolean))].sort(); }
 function getAllSizes() {
   // 尺寸排序：常見尺寸維持邏輯順序，其他按字母
@@ -2156,7 +2234,6 @@ function autoGenBarcode() {
   if (!sku) {
     sku = (prompt('廠商款號欄位是空的。請輸入款號（系統會自動取後 4 碼，不足會補 0）：', '') || '').trim().toUpperCase();
     if (!sku) { toast('未輸入款號', 'warn'); return; }
-    // 同步寫回 SKU 欄位
     document.getElementById('pm-sku').value = sku;
   }
   // 補成 4 碼（若少於 4 碼）或取後 4 碼（若超過）
@@ -2164,13 +2241,16 @@ function autoGenBarcode() {
   if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
   if (skuPart.length > 4) skuPart = skuPart.slice(-4);
 
-  const code = prefix + skuPart;
+  // 廠商代號
+  const vendorCode = getVendorCode(pmVendor);
+
+  const code = vendorCode + prefix + skuPart;
   if (products.some(p => p.barcode === code && p.id !== editProductId)) {
     toast(`條碼 ${code} 已被使用，請更換款號`, 'error');
     return;
   }
   document.getElementById('pm-barcode').value = code;
-  toast(`已產生條碼：${code}（價${prefix} + 款${skuPart}）`, 'success');
+  toast(`已產生：${code}${vendorCode ? `（${vendorCode}=${pmVendor}）` : '（未指定廠商）'}`, 'success');
 }
 
 // 計算庫存總和
@@ -2277,9 +2357,13 @@ function renderPmVendorChips() {
   const all = getAllVendors();
   if (pmVendor && !all.includes(pmVendor)) all.unshift(pmVendor);
   const html = all.length
-    ? all.map(v => `<span class="chip ${v===pmVendor?'selected':''}" onclick="selectPmVendor('${v.replace(/'/g,"\\'")}')">${v}</span>`).join('')
+    ? all.map(v => {
+        const code = getVendorCode(v);
+        return `<span class="chip ${v===pmVendor?'selected':''}" onclick="selectPmVendor('${v.replace(/'/g,"\\'")}')">${v}${code ? ` <span style="font-size:10px;opacity:.7;font-family:monospace;">[${code}]</span>` : ''}</span>`;
+      }).join('')
     : '<span style="font-size:12px;color:var(--text-muted);">尚無廠商，請從下方新增</span>';
   document.getElementById('pm-vendor-chips').innerHTML = html;
+  updateVendorCodeRow();
 }
 function selectPmVendor(v) {
   pmVendor = (pmVendor === v) ? '' : v;
@@ -2291,6 +2375,45 @@ function addNewVendor() {
   if (!val) return;
   pmVendor = val;
   inp.value = '';
+  renderPmVendorChips();
+}
+
+// 廠商代號區塊：選中廠商後顯示，未選則隱藏
+function updateVendorCodeRow() {
+  const row = document.getElementById('pm-vendor-code-row');
+  if (!row) return;
+  if (!pmVendor) { row.style.display = 'none'; return; }
+  row.style.display = 'block';
+  const existing = vendorCodes[pmVendor] || '';
+  const auto = autoVendorCode(pmVendor);
+  document.getElementById('pm-vendor-code').value = existing || auto;
+  const hint = document.getElementById('pm-vendor-code-hint');
+  if (existing) {
+    hint.textContent = `已設定，未來此廠商商品條碼會自動帶 ${existing}`;
+    hint.style.color = 'var(--success)';
+  } else if (auto) {
+    hint.textContent = `自動建議 ${auto}（可手動修改）`;
+    hint.style.color = 'var(--text-muted)';
+  } else {
+    hint.textContent = '請輸入 1 個字母作為條碼首字';
+    hint.style.color = 'var(--warning)';
+  }
+}
+
+// 儲存當前廠商的代號
+function saveCurrentVendorCode() {
+  if (!pmVendor) return;
+  const code = document.getElementById('pm-vendor-code').value.trim();
+  setVendorCode(pmVendor, code);
+  const hint = document.getElementById('pm-vendor-code-hint');
+  if (code) {
+    hint.textContent = `已設定為 ${code.toUpperCase()}`;
+    hint.style.color = 'var(--success)';
+  } else {
+    hint.textContent = '未設定（條碼將不含廠商首字）';
+    hint.style.color = 'var(--warning)';
+  }
+  // 同步更新 chip 列上的代號標籤
   renderPmVendorChips();
 }
 
@@ -3447,12 +3570,14 @@ function updateBatchPreview() {
     const costStr = String(Math.floor(cost));
     prefix = costStr.length >= 2 ? costStr.slice(0, 2) : costStr.padStart(2, '0');
   }
+  // 廠商代號
+  const vendorCode = getVendorCode(bmVendor);
 
   body.innerHTML = items.map((item, i) => {
     let skuPart = item.sku || '';
     if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
     if (skuPart.length > 4) skuPart = skuPart.slice(-4);
-    const barcode = item.sku ? prefix + skuPart : '—';
+    const barcode = item.sku ? vendorCode + prefix + skuPart : '—';
     return `<tr style="border-top:1px solid var(--border);">
       <td style="padding:5px 10px;color:var(--text-muted);">${i+1}</td>
       <td style="padding:5px 10px;font-family:monospace;color:var(--primary);font-weight:600;">${item.sku || '—'}</td>
@@ -3479,6 +3604,9 @@ function saveBatch() {
   const costStr = String(Math.floor(cost));
   const prefix = costStr.length >= 2 ? costStr.slice(0, 2) : costStr.padStart(2, '0');
 
+  // 廠商代號
+  const vendorCode = getVendorCode(bmVendor);
+
   // 驗證款號和條碼唯一性
   const newSkus = new Set();
   const newBarcodes = new Set();
@@ -3487,7 +3615,7 @@ function saveBatch() {
     let skuPart = item.sku;
     if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
     if (skuPart.length > 4) skuPart = skuPart.slice(-4);
-    const barcode = prefix + skuPart;
+    const barcode = vendorCode + prefix + skuPart;
     if (newBarcodes.has(barcode)) { toast(`款號 ${item.sku} 在本次批次內重複`, 'error'); return; }
     if (products.some(p => p.barcode === barcode)) { toast(`條碼 ${barcode}（款號 ${item.sku}）已存在於商品庫`, 'error'); return; }
     newBarcodes.add(barcode);
@@ -3505,7 +3633,7 @@ function saveBatch() {
     let skuPart = item.sku || '';
     if (skuPart.length < 4) skuPart = skuPart.padStart(4, '0');
     if (skuPart.length > 4) skuPart = skuPart.slice(-4);
-    const barcode = item.sku ? prefix + skuPart : '';
+    const barcode = item.sku ? vendorCode + prefix + skuPart : '';
     products.push({
       id: uid(),
       name: item.name,
@@ -3733,7 +3861,7 @@ function confirmImport() {
       // 進貨單：初始庫存 = 數量；銷貨單：初始庫存 0（純建檔）
       stockMap[stockKey] = aiScanDocType === 'purchase' ? qty : 0;
 
-      // 條碼：成本前 2 碼 + sku 後 4 碼（若有）
+      // 條碼：廠商代號 + 成本前 2 碼 + sku 後 4 碼（若有）
       let barcode = '';
       if (skuRaw && price > 0) {
         const costStr = String(Math.floor(price));
@@ -3742,7 +3870,9 @@ function confirmImport() {
         let skuTail = skuRaw.replace(/[^0-9A-Z]/g,'');
         if (skuTail.length > 4) skuTail = skuTail.slice(-4);
         if (skuTail.length < 4) skuTail = skuTail.padStart(4,'0');
-        barcode = prefix + skuTail;
+        // 廠商代號
+        const vendorCode = getVendorCode(vendorTrim);
+        barcode = vendorCode + prefix + skuTail;
         // 條碼衝突就不設
         if (products.some(p => p.barcode === barcode)) barcode = '';
       }
