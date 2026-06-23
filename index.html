@@ -210,8 +210,12 @@
   .tier-vip { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: var(--gold); }
 
   /* ── Report ── */
-  .stat-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
-  .stat-card { background: var(--surface); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); position: relative; overflow: hidden; transition: all .2s; }
+  .stat-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px; }
+  .stat-card { background: var(--surface); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); border: 1px solid var(--border); position: relative; overflow: hidden; transition: all .2s; }
+  .stat-card.stat-today { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: #fff; border-color: var(--gold); }
+  .stat-card.stat-today .sc-label { color: rgba(255,255,255,.7); }
+  .stat-card.stat-today .sc-value { color: var(--gold); }
+  .stat-card.stat-today .sc-sub { color: rgba(255,255,255,.85); }
   .stat-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--gold); }
   .stat-card:nth-child(1)::before { background: var(--gold); }
   .stat-card:nth-child(2)::before { background: var(--primary); }
@@ -801,7 +805,11 @@
   <div class="modal">
     <div class="modal-head">
       <h3 id="product-modal-title">新增商品</h3>
-      <button class="modal-close" onclick="closeModal('product-modal')">×</button>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="btn btn-outline btn-sm" id="pm-prev-btn" onclick="navProductModal(-1)" title="上一個商品" style="display:none;">◀ 上一個</button>
+        <button class="btn btn-outline btn-sm" id="pm-next-btn" onclick="navProductModal(1)" title="下一個商品" style="display:none;">下一個 ▶</button>
+        <button class="modal-close" onclick="closeModal('product-modal')">×</button>
+      </div>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -822,8 +830,17 @@
         <div class="form-group"></div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>售價 ($) *</label><input type="number" id="pm-price" min="0"></div>
-        <div class="form-group"><label>成本 ($)</label><input type="number" id="pm-cost" min="0"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>售價 ($) *</label>
+          <input type="number" id="pm-price" min="0">
+          <div id="pm-price-hint" style="display:none;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap;"></div>
+        </div>
+        <div class="form-group">
+          <label>成本 ($)</label>
+          <input type="number" id="pm-cost" min="0" oninput="updateSuggestedPrice()">
+        </div>
+      </div>
       </div>
       <div class="variant-section">
         <h4>分類</h4>
@@ -1454,7 +1471,9 @@ function renderProducts() {
       (p.vendor||'').toLowerCase().includes(q) ||
       (p.barcode||'').toLowerCase().includes(q) ||
       (p.sku||'').toLowerCase().includes(q);
-    return matchCat && matchQ;
+    // 收銀台隱藏售完商品（搜尋時除外，讓你能找回庫存）
+    const hideSoldOut = !q && getProductStock(p) === 0;
+    return matchCat && matchQ && !hideSoldOut;
   });
   if (sort === 'price-asc') list.sort((a,b) => a.price - b.price);
   if (sort === 'price-desc') list.sort((a,b) => b.price - a.price);
@@ -2327,7 +2346,105 @@ function openProductModal(id) {
   renderPmVendorChips();
   renderPmVariantChips();
   renderPmStockMatrix();
+  updateNavButtons();
+  updateSuggestedPrice();
   openModal('product-modal');
+}
+
+// 上一個/下一個商品（依目前商品管理列表的順序）
+function navProductModal(delta) {
+  if (!editProductId) return; // 新增模式不能切
+  // 取得目前在 list 裡的所有商品 id（依當前排序）
+  const ids = products.map(p => p.id);
+  const curIdx = ids.indexOf(editProductId);
+  if (curIdx < 0) return;
+  const newIdx = curIdx + delta;
+  if (newIdx < 0 || newIdx >= ids.length) {
+    toast(delta < 0 ? '已經是第一個商品' : '已經是最後一個商品', 'warn');
+    return;
+  }
+  // 先儲存當前修改
+  saveProductSilent();
+  // 載入下/上一個商品
+  openProductModal(ids[newIdx]);
+}
+
+// 靜默儲存（切換時用，不彈 toast、不關 modal）
+function saveProductSilent() {
+  const name = document.getElementById('pm-name').value.trim();
+  if (!name) return; // 空商品不存
+  const price = parseFloat(document.getElementById('pm-price').value) || 0;
+  if (price <= 0) return;
+
+  const cleanStock = {};
+  Object.keys(pmStockMap).forEach(k => {
+    const [c, s] = k.split('|');
+    if ((!c || pmColors.includes(c)) && (!s || pmSizes.includes(s))) {
+      const n = parseInt(pmStockMap[k]) || 0;
+      if (n > 0) cleanStock[k] = n;
+    }
+  });
+
+  const data = {
+    id: editProductId,
+    name, cat: pmCat, vendor: pmVendor,
+    sku: document.getElementById('pm-sku').value.trim().toUpperCase(),
+    barcode: document.getElementById('pm-barcode').value.trim().toUpperCase(),
+    price, cost: parseFloat(document.getElementById('pm-cost').value)||0,
+    colors: [...pmColors], sizes: [...pmSizes],
+    stockMap: cleanStock,
+    stock: calcStockTotal(cleanStock),
+    images: [...pmImages],
+    image: pmImages[0] || '',
+    link: document.getElementById('pm-link').value.trim(),
+    note: document.getElementById('pm-note').value.trim(),
+  };
+  const idx = products.findIndex(x => x.id === editProductId);
+  if (idx >= 0) {
+    products[idx] = data;
+    save('pos_products', products);
+  }
+}
+
+function updateNavButtons() {
+  const prevBtn = document.getElementById('pm-prev-btn');
+  const nextBtn = document.getElementById('pm-next-btn');
+  if (!prevBtn || !nextBtn) return;
+  if (!editProductId) {
+    prevBtn.style.display = 'none';
+    nextBtn.style.display = 'none';
+    return;
+  }
+  const ids = products.map(p => p.id);
+  const idx = ids.indexOf(editProductId);
+  prevBtn.style.display = '';
+  nextBtn.style.display = '';
+  prevBtn.disabled = idx <= 0;
+  nextBtn.disabled = idx >= ids.length - 1;
+  prevBtn.style.opacity = idx <= 0 ? '.4' : '';
+  nextBtn.style.opacity = idx >= ids.length - 1 ? '.4' : '';
+}
+
+// 顯示建議售價（基於成本價）
+function updateSuggestedPrice() {
+  const cost = parseFloat(document.getElementById('pm-cost').value) || 0;
+  const hint = document.getElementById('pm-price-hint');
+  if (!hint) return;
+  if (cost <= 0) {
+    hint.style.display = 'none';
+    return;
+  }
+  // 服飾常見定價倍數：2倍（基本）、2.5倍（一般）、3倍（精品）
+  const x2 = Math.round(cost * 2 / 10) * 10;
+  const x25 = Math.round(cost * 2.5 / 10) * 10;
+  const x3 = Math.round(cost * 3 / 10) * 10;
+  hint.style.display = 'flex';
+  hint.innerHTML = `
+    <span style="color:var(--text-muted);font-size:11px;margin-right:4px;">建議：</span>
+    <button type="button" onclick="document.getElementById('pm-price').value=${x2}" style="padding:2px 8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:11px;cursor:pointer;color:var(--primary);font-weight:600;">$${x2} <span style="opacity:.6;font-weight:400;">(2倍)</span></button>
+    <button type="button" onclick="document.getElementById('pm-price').value=${x25}" style="padding:2px 8px;background:var(--bg);border:1px solid var(--gold);border-radius:10px;font-size:11px;cursor:pointer;color:var(--gold);font-weight:700;">$${x25} <span style="opacity:.7;font-weight:400;">(2.5倍)</span></button>
+    <button type="button" onclick="document.getElementById('pm-price').value=${x3}" style="padding:2px 8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:11px;cursor:pointer;color:var(--primary);font-weight:600;">$${x3} <span style="opacity:.6;font-weight:400;">(3倍)</span></button>
+  `;
 }
 
 // 分類 chips（單選）
@@ -3742,10 +3859,11 @@ async function onScanFileSelected(event) {
     statusEl.innerHTML = `✅ 辨識成功！共 ${items.length} 筆品項，正在開啟核對視窗...`;
     statusEl.style.background = 'rgba(39,174,96,.2)';
 
+    // 先關閉批次 modal，等動畫結束再開啟核對 modal
+    closeModal('batch-modal');
     setTimeout(() => {
-      closeModal('batch-modal');
       openImportReviewModal();
-    }, 600);
+    }, 300);
 
   } catch (err) {
     console.error(err);
@@ -4051,14 +4169,81 @@ function renderReport() {
   const todayTxs = transactions.filter(t => t.date.startsWith(today.replace(/\//g, '/')));
   const todayTotal = todayTxs.reduce((s, t) => s + t.total, 0);
   const todayProfit = todayTxs.reduce((s, t) => s + getTxProfit(t), 0);
+  const todayQty = todayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
   const avgOrder = transactions.length ? Math.round(total / transactions.length) : 0;
   const profitMargin = total > 0 ? Math.round(totalProfit / total * 100) : 0;
+  const todayMargin = todayTotal > 0 ? Math.round(todayProfit / todayTotal * 100) : 0;
+
+  // 本月銷售
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthTxs = transactions.filter(t => {
+    const parts = (t.date || '').split(' ')[0].split('/').map(Number);
+    if (parts.length < 3) return false;
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    return d >= monthStart;
+  });
+  const monthTotal = monthTxs.reduce((s, t) => s + t.total, 0);
+  const monthProfit = monthTxs.reduce((s, t) => s + getTxProfit(t), 0);
+
+  // 昨日比較
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toLocaleDateString('zh-TW');
+  const yesterdayTxs = transactions.filter(t => t.date.startsWith(yesterdayStr.replace(/\//g, '/')));
+  const yesterdayTotal = yesterdayTxs.reduce((s, t) => s + t.total, 0);
+  const dodChange = yesterdayTotal > 0 ? Math.round((todayTotal - yesterdayTotal) / yesterdayTotal * 100) : null;
+
+  // 最熱銷商品
+  const itemSales = {};
+  transactions.forEach(t => {
+    (t.items || []).forEach(i => {
+      const key = i.productId || i.name;
+      if (!itemSales[key]) itemSales[key] = { name: i.name, qty: 0, revenue: 0 };
+      itemSales[key].qty += i.qty;
+      itemSales[key].revenue += i.price * i.qty;
+    });
+  });
+  const topProduct = Object.values(itemSales).sort((a, b) => b.qty - a.qty)[0];
 
   document.getElementById('stat-cards').innerHTML = `
-    <div class="stat-card"><div class="sc-label">今日銷售</div><div class="sc-value">${fmt(todayTotal)}</div><div class="sc-sub">共 ${todayTxs.length} 筆</div></div>
-    <div class="stat-card"><div class="sc-label">今日淨利</div><div class="sc-value">${fmt(todayProfit)}</div><div class="sc-sub">${todayTotal>0?Math.round(todayProfit/todayTotal*100)+'% 毛利':' '}</div></div>
-    <div class="stat-card"><div class="sc-label">累計銷售</div><div class="sc-value">${fmt(total)}</div><div class="sc-sub">共 ${transactions.length} 筆</div></div>
-    <div class="stat-card"><div class="sc-label">累計淨利</div><div class="sc-value">${fmt(totalProfit)}</div><div class="sc-sub">${profitMargin}% 毛利率</div></div>
+    <div class="stat-card stat-today">
+      <div class="sc-label">📅 今日銷售</div>
+      <div class="sc-value">${fmt(todayTotal)}</div>
+      <div class="sc-sub">
+        ${todayTxs.length} 筆 · ${todayQty} 件
+        ${dodChange !== null ? ` · <span style="color:${dodChange>=0?'var(--success)':'var(--danger)'};font-weight:700;">${dodChange>=0?'▲':'▼'}${Math.abs(dodChange)}%</span>` : ''}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">💰 今日淨利</div>
+      <div class="sc-value">${fmt(todayProfit)}</div>
+      <div class="sc-sub">${todayTotal > 0 ? `毛利率 ${todayMargin}%` : '尚無交易'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">📆 本月銷售</div>
+      <div class="sc-value">${fmt(monthTotal)}</div>
+      <div class="sc-sub">${monthTxs.length} 筆 · 淨利 ${fmt(monthProfit)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">📊 累計銷售</div>
+      <div class="sc-value">${fmt(total)}</div>
+      <div class="sc-sub">共 ${transactions.length} 筆 · 客單 ${fmt(avgOrder)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">🏆 累計淨利</div>
+      <div class="sc-value">${fmt(totalProfit)}</div>
+      <div class="sc-sub">毛利率 ${profitMargin}%</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">👕 熱銷冠軍</div>
+      ${topProduct ? `
+        <div class="sc-value" style="font-size:16px;line-height:1.3;">${topProduct.name.length > 8 ? topProduct.name.slice(0, 8) + '…' : topProduct.name}</div>
+        <div class="sc-sub">售 ${topProduct.qty} 件 · ${fmt(topProduct.revenue)}</div>
+      ` : `
+        <div class="sc-value" style="font-size:16px;color:var(--text-muted);">—</div>
+        <div class="sc-sub">尚無資料</div>
+      `}
+    </div>
   `;
 
   // 近 7 日銷售趨勢（從真實 transactions 算出）
