@@ -7,6 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1a2e25">
+<!-- ZXing-js for barcode scanning (cross-browser, supports iOS Safari) -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
+<!-- ZXing 條碼辨識函式庫（iOS Safari 沒有 BarcodeDetector 用這個） -->
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 <title>服飾精品 POS 系統</title>
 <style>
   :root {
@@ -4343,6 +4347,7 @@ function scanAndCount(code) {
 let cameraStream = null;
 let cameraScanning = false;
 let cameraDetector = null;
+let zxingReader = null; // ZXing reader（iOS Safari 用）
 let lastScannedCode = '';
 let lastScannedTime = 0;
 let scanHistory = [];
@@ -4354,7 +4359,7 @@ function openPosCameraScanner() {
   openCameraScannerCore('收銀掃描', '對準商品條碼自動加入購物車');
 }
 
-// 為盤點開啟相機（已存在的函數改名為 core）
+// 為盤點開啟相機
 async function openCameraScanner() {
   cameraMode = 'stocktake';
   openCameraScannerCore('盤點掃描', '對準條碼自動 +1 計數');
@@ -4370,7 +4375,6 @@ async function openCameraScannerCore(title, subtitle) {
   scanHistory = [];
   document.getElementById('cam-history').innerHTML = '';
   document.getElementById('cam-status').innerHTML = '正在啟動相機...';
-  // 更新標題
   const titleEl = document.querySelector('#camera-scan-modal h3');
   if (titleEl) titleEl.textContent = '📷 ' + title;
 
@@ -4390,6 +4394,7 @@ async function openCameraScannerCore(title, subtitle) {
     document.getElementById('cam-status').innerHTML = `🔍 ${subtitle}`;
     cameraScanning = true;
 
+    // 優先使用瀏覽器原生 BarcodeDetector（Android Chrome）
     if ('BarcodeDetector' in window) {
       try {
         cameraDetector = new BarcodeDetector({
@@ -4402,7 +4407,29 @@ async function openCameraScannerCore(title, subtitle) {
       }
     }
 
-    document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識';
+    // 備援：ZXing（iOS Safari 主要用這個）
+    if (typeof ZXing !== 'undefined') {
+      try {
+        if (!zxingReader) {
+          zxingReader = new ZXing.BrowserMultiFormatReader();
+        }
+        zxingReader.decodeFromVideoElement(video, (result, err) => {
+          if (!cameraScanning) {
+            try { zxingReader.reset(); } catch(e){}
+            return;
+          }
+          if (result) {
+            processScannedCode(result.getText());
+          }
+        });
+        document.getElementById('cam-status').innerHTML = `🔍 ${subtitle}`;
+        return;
+      } catch (e) {
+        console.error('ZXing 初始化失敗', e);
+      }
+    }
+
+    document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識，請使用手動輸入';
 
   } catch (err) {
     console.error('相機開啟失敗', err);
@@ -4548,6 +4575,9 @@ function renderScanHistory() {
 
 function closeCameraScanner() {
   cameraScanning = false;
+  if (zxingReader) {
+    try { zxingReader.reset(); } catch(e) {}
+  }
   if (cameraStream) {
     cameraStream.getTracks().forEach(track => track.stop());
     cameraStream = null;
