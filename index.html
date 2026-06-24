@@ -7,40 +7,37 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1a2e25">
-<!-- ZXing-js for barcode scanning (cross-browser, supports iOS Safari) -->
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
-<!-- QRCode generation - 多個 CDN 備援，避免被擋 -->
+<!-- ZXing-js for barcode scanning（多 CDN 備援，避免被擋）-->
 <script>
-  // 嘗試多個 CDN 來源
   (function() {
     const sources = [
-      'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
-      'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
-      'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js'
+      'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js',
+      'https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.21.0/umd/index.min.js'
     ];
     let i = 0;
     function tryLoad() {
       if (i >= sources.length) {
-        console.error('所有 QRCode CDN 載入失敗');
+        console.error('ZXing 所有 CDN 載入失敗，相機掃描將不可用');
+        window.__zxingFailed = true;
         return;
       }
       const s = document.createElement('script');
       s.src = sources[i];
       s.onerror = function() {
-        console.warn('QRCode CDN ' + i + ' 載入失敗，嘗試下一個');
+        console.warn('ZXing CDN ' + i + ' 載入失敗，嘗試下一個');
         i++;
         tryLoad();
       };
       s.onload = function() {
-        console.log('QRCode 載入成功:', sources[i]);
+        console.log('ZXing 載入成功:', sources[i]);
+        window.__zxingReady = true;
       };
       document.head.appendChild(s);
     }
     tryLoad();
   })();
 </script>
-<!-- ZXing 條碼辨識函式庫（iOS Safari 沒有 BarcodeDetector 用這個） -->
-<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 <title>服飾精品 POS 系統</title>
 <style>
   :root {
@@ -936,7 +933,7 @@
           <div class="page-title"><span class="title-bar"></span>🏬 寄賣管理</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="openConsignVendorModal()">＋ 新增寄賣商</button>
-            <button class="btn btn-gold" onclick="openConsignScanImport()">📷 掃描匯入</button>
+            <button class="btn btn-gold" onclick="openConsignPasteImport()">📥 匯入寄賣商品</button>
             <button class="btn btn-primary" onclick="openConsignItemModal()" id="cn-add-item-btn">＋ 新增寄賣商品</button>
           </div>
         </div>
@@ -1253,7 +1250,41 @@
   }
 </style>
 
-<!-- Vendor Portal QR Modal -->
+<!-- Consign Paste Import Modal -->
+<div class="modal-overlay" id="cpaste-modal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-head">
+      <h3>📥 匯入寄賣商品</h3>
+      <button class="modal-close" onclick="closeModal('cpaste-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--primary);line-height:1.7;">
+        <strong>📋 兩種匯入方式：</strong><br>
+        <strong>方式 1：</strong>把寄賣商傳給你的 JSON 內容貼到下方<br>
+        <strong>方式 2：</strong>點下方「📁 選擇檔案」載入 JSON 檔
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+        <input type="file" id="cpaste-file" accept=".json,.txt,application/json" style="display:none;" onchange="loadConsignJSONFile(event)">
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('cpaste-file').click()">📁 選擇 JSON 檔案</button>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('cpaste-text').value='';">🗑 清空</button>
+      </div>
+      <textarea id="cpaste-text" rows="8" placeholder='貼上寄賣商給你的 JSON 內容...
+
+格式範例：
+{
+  "type": "consign_import_v1",
+  "vendorName": "海邊小屋",
+  "items": [...]
+}' style="width:100%;padding:10px;border:1px solid var(--border);border-radius:7px;font-family:monospace;font-size:11px;outline:none;background:var(--bg);"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cpaste-modal')">取消</button>
+      <button class="btn btn-primary" onclick="parseConsignPaste()">✓ 解析並預覽</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vendor Portal URL Modal -->
 <div class="modal-overlay" id="vqr-modal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-head">
@@ -1261,21 +1292,23 @@
       <button class="modal-close" onclick="closeModal('vqr-modal')">×</button>
     </div>
     <div class="modal-body">
-      <div id="vqr-vendor-name" style="text-align:center;font-weight:700;color:var(--primary);font-size:15px;margin-bottom:8px;"></div>
-      <div style="background:#fff;padding:20px;border-radius:12px;text-align:center;">
-        <div id="vqr-container"></div>
+      <div id="vqr-vendor-name" style="text-align:center;font-weight:700;color:var(--primary);font-size:15px;margin-bottom:14px;"></div>
+      <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:14px;">
+        <div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:6px;">🔗 寄賣商建檔網址：</div>
+        <div id="vqr-url" style="padding:10px;background:#fff;border:1px solid var(--border);border-radius:6px;font-family:monospace;font-size:11px;word-break:break-all;color:var(--primary);line-height:1.6;"></div>
+        <button class="btn btn-gold btn-sm" onclick="copyVendorURL()" style="margin-top:10px;width:100%;">📋 複製網址</button>
       </div>
-      <div style="margin-top:14px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:12px;font-size:12px;color:var(--primary);line-height:1.7;">
-        📌 <strong>分享方式</strong><br>
-        1️⃣ 把這個 QR Code 給寄賣商掃<br>
-        2️⃣ 或直接傳網址給他們：<br>
-        <div id="vqr-url" style="margin-top:6px;padding:6px 10px;background:#fff;border:1px solid var(--border);border-radius:5px;font-family:monospace;font-size:10px;word-break:break-all;color:var(--text-muted);"></div>
-        <button class="btn btn-outline btn-sm" onclick="copyVendorURL()" style="margin-top:8px;font-size:11px;">📋 複製網址</button>
+      <div style="margin-top:14px;background:var(--bg);border-radius:8px;padding:12px;font-size:12px;color:var(--primary);line-height:1.7;">
+        📋 <strong>分享方式：</strong><br>
+        1️⃣ 點上方「📋 複製網址」<br>
+        2️⃣ 用 LINE 把網址傳給寄賣商<br>
+        3️⃣ 寄賣商點網址 → 進入專屬建檔頁<br>
+        4️⃣ 寄賣商建好商品後 → 點「📤 匯出商品給店主」<br>
+        5️⃣ 你用 LINE 收到資料 → 點「📥 匯入寄賣商品」貼上
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('vqr-modal')">關閉</button>
-      <button class="btn btn-gold" onclick="downloadVendorQR()" style="margin-left:auto;">💾 下載 QR Code</button>
     </div>
   </div>
 </div>
@@ -4879,7 +4912,7 @@ function deleteRentPayment(idx) {
   renderConsign();
 }
 
-// === 寄賣商專屬 QR Code ===
+// === 寄賣商專屬網址 ===
 function showVendorPortalQR(vendorId) {
   const v = consignVendors.find(x => x.id === vendorId);
   if (!v) return;
@@ -4889,48 +4922,14 @@ function showVendorPortalQR(vendorId) {
 
   document.getElementById('vqr-vendor-name').textContent = '🏬 ' + v.name;
   document.getElementById('vqr-url').textContent = url;
-
-  // 產生 QR Code
-  const container = document.getElementById('vqr-container');
-  if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
-    container.innerHTML = '<canvas id="vqr-canvas"></canvas>';
-    QRCode.toCanvas(document.getElementById('vqr-canvas'), url, {
-      width: 280,
-      margin: 2,
-      color: { dark: '#1a2e25', light: '#ffffff' },
-      errorCorrectionLevel: 'M'
-    }, function(err) {
-      if (err) {
-        showQRFallback(container, url, '產生失敗：' + err.message);
-      }
-    });
-  } else {
-    // QRCode 函式庫沒載入成功 → 顯示替代方案
-    showQRFallback(container, url, 'QR Code 函式庫載入失敗（網路擋住 CDN）');
-  }
   openModal('vqr-modal');
-}
-
-// QR Code 無法產生時的替代方案
-function showQRFallback(container, url, reason) {
-  // 用 Google Charts API 作為遠端後備（不需要 JS 函式庫）
-  const googleQrUrl = `https://chart.googleapis.com/chart?cht=qr&chs=280x280&chld=M|2&chl=${encodeURIComponent(url)}`;
-  container.innerHTML = `
-    <div style="padding:20px;text-align:center;">
-      <img src="${googleQrUrl}" alt="QR Code" style="max-width:280px;width:100%;border:1px solid var(--border);border-radius:8px;" onerror="this.style.display='none';document.getElementById('qr-fallback-msg').style.display='block';">
-      <div id="qr-fallback-msg" style="display:none;margin-top:14px;padding:14px;background:#fde8e8;border-radius:8px;color:var(--danger);font-size:12px;">
-        ⚠ ${reason}<br>
-        請直接複製下方網址傳給寄賣商
-      </div>
-    </div>
-  `;
 }
 
 function copyVendorURL() {
   const url = document.getElementById('vqr-url').textContent;
   if (!url) return;
   navigator.clipboard?.writeText(url).then(() => {
-    toast('✓ 網址已複製', 'success');
+    toast('✓ 網址已複製，可貼到 LINE 給寄賣商', 'success');
   }).catch(() => {
     // 備援
     const range = document.createRange();
@@ -4942,35 +4941,37 @@ function copyVendorURL() {
   });
 }
 
-function downloadVendorQR() {
-  const canvas = document.getElementById('vqr-canvas');
-  const v = consignVendors.find(x => x.id === currentVqrVendorId);
-  const filename = `consign-vendor-qr-${v ? v.name : currentVqrVendorId}.png`;
-  if (canvas && canvas.toDataURL) {
-    // canvas 模式
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = canvas.toDataURL();
-    link.click();
-    toast('已下載', 'success');
-    return;
-  }
-  // img 模式（Google Charts fallback）
-  const img = document.querySelector('#vqr-container img');
-  if (img) {
-    // 開新分頁讓使用者長按存圖
-    window.open(img.src, '_blank');
-    toast('請長按圖片儲存', 'success');
-  } else {
-    toast('沒有可下載的 QR Code', 'error');
+// === 貼上 / 載入 JSON 匯入 ===
+function openConsignPasteImport() {
+  document.getElementById('cpaste-text').value = '';
+  document.getElementById('cpaste-file').value = '';
+  openModal('cpaste-modal');
+}
+
+function loadConsignJSONFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('cpaste-text').value = e.target.result;
+    toast('已載入檔案，請點「解析並預覽」', 'success');
+  };
+  reader.onerror = () => toast('讀取檔案失敗', 'error');
+  reader.readAsText(file);
+}
+
+function parseConsignPaste() {
+  const text = document.getElementById('cpaste-text').value.trim();
+  if (!text) { toast('請貼上 JSON 內容或載入檔案', 'error'); return; }
+  if (processConsignImportQR(text)) {
+    closeModal('cpaste-modal');
   }
 }
 
-// === 掃描匯入 QR Code ===
+// 保留原本的解析函數（同時支援掃 QR 與貼上 JSON）
 function openConsignScanImport() {
-  // 重用既有的相機掃描，加上特殊模式
-  cameraMode = 'consign_import';
-  openCameraScannerCore('掃描寄賣商 QR Code', '對準寄賣商產生的 QR Code');
+  // 改成跳轉到貼上匯入
+  openConsignPasteImport();
 }
 
 // 處理 QR Code 掃到的寄賣資料
@@ -5489,7 +5490,14 @@ async function openCameraScannerCore(title, subtitle) {
       }
     }
 
-    document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識，請使用手動輸入';
+    // 全部失敗了
+    if (window.__zxingFailed) {
+      document.getElementById('cam-status').innerHTML = '❌ 條碼辨識函式庫載入失敗<br><span style="font-size:11px;opacity:.7;">CDN 被網路擋住，請改用手動輸入條碼</span>';
+    } else if (typeof ZXing === 'undefined') {
+      document.getElementById('cam-status').innerHTML = '⏳ 函式庫載入中，請等 3 秒再試';
+    } else {
+      document.getElementById('cam-status').innerHTML = '⚠ 此瀏覽器不支援自動辨識，請使用手動輸入';
+    }
 
   } catch (err) {
     console.error('相機開啟失敗', err);
