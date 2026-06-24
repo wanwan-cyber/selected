@@ -1626,6 +1626,9 @@ let vmSelectedSize = '';
 // ======================== UTILS ========================
 function uid() { return 'id' + Date.now() + Math.random().toString(36).slice(2,6); }
 function fmt(n) { return '$' + Number(n).toLocaleString(); }
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+}
 function showPage(p, btn) {
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.sidebar-nav button').forEach(el => el.classList.remove('active'));
