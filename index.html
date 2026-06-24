@@ -9,8 +9,36 @@
 <meta name="theme-color" content="#1a2e25">
 <!-- ZXing-js for barcode scanning (cross-browser, supports iOS Safari) -->
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
-<!-- QRCode generation for consign vendor links -->
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<!-- QRCode generation - 多個 CDN 備援，避免被擋 -->
+<script>
+  // 嘗試多個 CDN 來源
+  (function() {
+    const sources = [
+      'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
+      'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js'
+    ];
+    let i = 0;
+    function tryLoad() {
+      if (i >= sources.length) {
+        console.error('所有 QRCode CDN 載入失敗');
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = sources[i];
+      s.onerror = function() {
+        console.warn('QRCode CDN ' + i + ' 載入失敗，嘗試下一個');
+        i++;
+        tryLoad();
+      };
+      s.onload = function() {
+        console.log('QRCode 載入成功:', sources[i]);
+      };
+      document.head.appendChild(s);
+    }
+    tryLoad();
+  })();
+</script>
 <!-- ZXing 條碼辨識函式庫（iOS Safari 沒有 BarcodeDetector 用這個） -->
 <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 <title>服飾精品 POS 系統</title>
@@ -4864,18 +4892,38 @@ function showVendorPortalQR(vendorId) {
 
   // 產生 QR Code
   const container = document.getElementById('vqr-container');
-  container.innerHTML = '<canvas id="vqr-canvas"></canvas>';
-  if (typeof QRCode !== 'undefined') {
+  if (typeof QRCode !== 'undefined' && QRCode.toCanvas) {
+    container.innerHTML = '<canvas id="vqr-canvas"></canvas>';
     QRCode.toCanvas(document.getElementById('vqr-canvas'), url, {
       width: 280,
       margin: 2,
       color: { dark: '#1a2e25', light: '#ffffff' },
       errorCorrectionLevel: 'M'
+    }, function(err) {
+      if (err) {
+        showQRFallback(container, url, '產生失敗：' + err.message);
+      }
     });
   } else {
-    container.innerHTML = '<div style="color:var(--danger);">QRCode 函式庫載入失敗</div>';
+    // QRCode 函式庫沒載入成功 → 顯示替代方案
+    showQRFallback(container, url, 'QR Code 函式庫載入失敗（網路擋住 CDN）');
   }
   openModal('vqr-modal');
+}
+
+// QR Code 無法產生時的替代方案
+function showQRFallback(container, url, reason) {
+  // 用 Google Charts API 作為遠端後備（不需要 JS 函式庫）
+  const googleQrUrl = `https://chart.googleapis.com/chart?cht=qr&chs=280x280&chld=M|2&chl=${encodeURIComponent(url)}`;
+  container.innerHTML = `
+    <div style="padding:20px;text-align:center;">
+      <img src="${googleQrUrl}" alt="QR Code" style="max-width:280px;width:100%;border:1px solid var(--border);border-radius:8px;" onerror="this.style.display='none';document.getElementById('qr-fallback-msg').style.display='block';">
+      <div id="qr-fallback-msg" style="display:none;margin-top:14px;padding:14px;background:#fde8e8;border-radius:8px;color:var(--danger);font-size:12px;">
+        ⚠ ${reason}<br>
+        請直接複製下方網址傳給寄賣商
+      </div>
+    </div>
+  `;
 }
 
 function copyVendorURL() {
@@ -4896,13 +4944,26 @@ function copyVendorURL() {
 
 function downloadVendorQR() {
   const canvas = document.getElementById('vqr-canvas');
-  if (!canvas) return;
   const v = consignVendors.find(x => x.id === currentVqrVendorId);
-  const link = document.createElement('a');
-  link.download = `consign-vendor-qr-${v ? v.name : currentVqrVendorId}.png`;
-  link.href = canvas.toDataURL();
-  link.click();
-  toast('已下載', 'success');
+  const filename = `consign-vendor-qr-${v ? v.name : currentVqrVendorId}.png`;
+  if (canvas && canvas.toDataURL) {
+    // canvas 模式
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = canvas.toDataURL();
+    link.click();
+    toast('已下載', 'success');
+    return;
+  }
+  // img 模式（Google Charts fallback）
+  const img = document.querySelector('#vqr-container img');
+  if (img) {
+    // 開新分頁讓使用者長按存圖
+    window.open(img.src, '_blank');
+    toast('請長按圖片儲存', 'success');
+  } else {
+    toast('沒有可下載的 QR Code', 'error');
+  }
 }
 
 // === 掃描匯入 QR Code ===
