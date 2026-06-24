@@ -1190,6 +1190,168 @@
   </div>
 </div>
 
+<!-- Consignment Vendor Modal -->
+<div class="modal-overlay" id="cv-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="cv-modal-title">新增寄賣商</h3>
+      <button class="modal-close" onclick="closeModal('cv-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>寄賣商名稱 *</label><input type="text" id="cv-name" placeholder="例：海邊小屋手作飾品"></div>
+      <div class="form-row">
+        <div class="form-group"><label>聯絡人</label><input type="text" id="cv-contact" placeholder="老闆姓名"></div>
+        <div class="form-group"><label>電話</label><input type="text" id="cv-phone"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>每月租金 ($)</label><input type="number" id="cv-rent" min="0" placeholder="例 3000"></div>
+        <div class="form-group"><label>開始日期</label><input type="date" id="cv-start-date"></div>
+      </div>
+      <div class="form-group"><label>備註</label><textarea id="cv-note" rows="2" placeholder="位置、特殊條件等"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="deleteConsignVendor()" id="cv-delete-btn" style="display:none;">🗑 刪除</button>
+      <button class="btn btn-outline" onclick="closeModal('cv-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveConsignVendor()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignment Item Modal -->
+<div class="modal-overlay" id="ci-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3 id="ci-modal-title">新增寄賣商品</h3>
+      <button class="modal-close" onclick="closeModal('ci-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>寄賣商 *</label>
+        <select id="ci-vendor"></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>商品名稱 *</label><input type="text" id="ci-name" placeholder="例：手工銀飾項鍊"></div>
+        <div class="form-group"><label>款號</label><input type="text" id="ci-sku" placeholder="廠商款號"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>條碼 *
+            <button type="button" onclick="autoGenConsignBarcode()" style="font-size:11px;padding:2px 8px;background:var(--gold);color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:6px;">🎲 自動產生</button>
+          </label>
+          <input type="text" id="ci-barcode" placeholder="掃描或自動產生">
+        </div>
+        <div class="form-group"><label>售價 ($) *</label><input type="number" id="ci-price" min="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>顏色（選填）</label><input type="text" id="ci-color" placeholder="例：銀色"></div>
+        <div class="form-group"><label>尺寸（選填）</label><input type="text" id="ci-size" placeholder="例：F"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>進貨數量</label><input type="number" id="ci-stock" min="0" value="1"></div>
+        <div class="form-group"><label>分類</label><input type="text" id="ci-cat" placeholder="例:飾品"></div>
+      </div>
+      <div class="form-group"><label>備註</label><textarea id="ci-note" rows="2"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="deleteConsignItem()" id="ci-delete-btn" style="display:none;">🗑 刪除</button>
+      <button class="btn btn-outline" onclick="closeModal('ci-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveConsignItem()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignment Rent Modal -->
+<div class="modal-overlay" id="cr-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <h3>💰 租金繳費紀錄</h3>
+      <button class="modal-close" onclick="closeModal('cr-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="cr-vendor-info" style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--primary);"></div>
+      <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;"><label style="font-size:11px;color:var(--text-muted);">月份</label><input type="month" id="cr-month" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></div>
+        <div style="flex:1;min-width:120px;"><label style="font-size:11px;color:var(--text-muted);">金額</label><input type="number" id="cr-amount" placeholder="0" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></div>
+        <button class="btn btn-gold btn-sm" onclick="addRentPayment()">＋ 記錄收款</button>
+      </div>
+      <div id="cr-list" style="border:1px solid var(--border);border-radius:8px;max-height:280px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cr-modal')">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vendor Portal URL Modal -->
+<div class="modal-overlay" id="vqr-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <h3>📱 寄賣商專屬連結</h3>
+      <button class="modal-close" onclick="closeModal('vqr-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="vqr-vendor-name" style="text-align:center;font-weight:700;color:var(--primary);font-size:15px;margin-bottom:14px;"></div>
+      <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:14px;">
+        <div style="font-size:12px;color:var(--primary);font-weight:700;margin-bottom:6px;">🔗 寄賣商建檔網址：</div>
+        <div id="vqr-url" style="padding:10px;background:#fff;border:1px solid var(--border);border-radius:6px;font-family:monospace;font-size:11px;word-break:break-all;color:var(--primary);line-height:1.6;"></div>
+        <button class="btn btn-gold btn-sm" onclick="copyVendorURL()" style="margin-top:10px;width:100%;">📋 複製網址</button>
+      </div>
+      <div style="margin-top:14px;background:var(--bg);border-radius:8px;padding:12px;font-size:12px;color:var(--primary);line-height:1.7;">
+        📋 <strong>分享方式：</strong><br>
+        1️⃣ 點上方「📋 複製網址」<br>
+        2️⃣ 用 LINE 把網址傳給寄賣商<br>
+        3️⃣ 寄賣商點網址 → 進入專屬建檔頁<br>
+        4️⃣ 寄賣商建好商品後 → 點「📤 匯出商品給店主」<br>
+        5️⃣ 你用 LINE 收到資料 → 點「📥 匯入寄賣商品」貼上
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('vqr-modal')">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consign Paste Import Modal -->
+<div class="modal-overlay" id="cpaste-modal">
+  <div class="modal" style="max-width:580px;">
+    <div class="modal-head">
+      <h3>📥 匯入寄賣商品</h3>
+      <button class="modal-close" onclick="closeModal('cpaste-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--primary);line-height:1.6;">
+        📋 把寄賣商傳給你的 JSON 內容貼到下方，或點「📁 選擇檔案」載入 JSON 檔
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <input type="file" id="cpaste-file" accept=".json,.txt,application/json" style="display:none;" onchange="loadConsignJSONFile(event)">
+        <button class="btn btn-gold btn-sm" onclick="document.getElementById('cpaste-file').click()">📁 選擇 JSON 檔案</button>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('cpaste-text').value='';">🗑 清空</button>
+        <button class="btn btn-primary btn-sm" onclick="parseConsignPaste()" style="margin-left:auto;font-weight:700;">✓ 解析並預覽</button>
+      </div>
+      <textarea id="cpaste-text" rows="6" placeholder="貼上寄賣商給你的 JSON 內容..." style="width:100%;max-height:200px;padding:10px;border:1px solid var(--border);border-radius:7px;font-family:monospace;font-size:11px;outline:none;background:var(--bg);"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cpaste-modal')">取消</button>
+      <button class="btn btn-primary" onclick="parseConsignPaste()">✓ 解析並預覽</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consign Import Review Modal -->
+<div class="modal-overlay" id="cimport-modal">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-head">
+      <h3>📥 寄賣商品匯入確認</h3>
+      <button class="modal-close" onclick="closeModal('cimport-modal')">×</button>
+    </div>
+    <div class="modal-body" id="cimport-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cimport-modal')">取消</button>
+      <button class="btn btn-primary" onclick="confirmConsignImport()" id="cimport-confirm-btn">✓ 確認匯入</button>
+    </div>
+  </div>
+</div>
+
 <!-- Variant Select Modal (POS) -->
 <div class="modal-overlay select-modal" id="variant-modal">
   <div class="modal">
