@@ -1745,7 +1745,14 @@ function getCategories() {
 let activeCat = '全部';
 function renderCatBar() {
   const bar = document.getElementById('cat-bar');
-  bar.innerHTML = getCategories().map(c => `<button class="cat-btn ${c===activeCat?'active':''}" onclick="setCat('${c}')">${c}</button>`).join('');
+  const cats = getCategories();
+  // 如果有寄賣商品，在分類列加入「🏬 寄賣」
+  const hasConsign = consignItems && consignItems.length > 0;
+  let html = cats.map(c => `<button class="cat-btn ${c===activeCat?'active':''}" onclick="setCat('${c}')">${c}</button>`).join('');
+  if (hasConsign) {
+    html += `<button class="cat-btn ${activeCat==='__consign__'?'active':''}" onclick="setCat('__consign__')" style="background:${activeCat==='__consign__'?'var(--gold)':'rgba(201,168,76,.15)'};color:${activeCat==='__consign__'?'#fff':'var(--gold)'};border-color:var(--gold);font-weight:700;">🏬 寄賣</button>`;
+  }
+  bar.innerHTML = html;
 }
 function setCat(c) { activeCat = c; renderCatBar(); renderProducts(); }
 
@@ -1753,6 +1760,13 @@ function setCat(c) { activeCat = c; renderCatBar(); renderProducts(); }
 function renderProducts() {
   const q = document.getElementById('search-input').value.toLowerCase().trim();
   const sort = document.getElementById('sort-select').value;
+
+  // 寄賣商品分類：只顯示寄賣商品
+  if (activeCat === '__consign__') {
+    renderConsignProducts(q, sort);
+    return;
+  }
+
   let list = products.filter(p => {
     const matchCat = activeCat === '全部' || p.cat === activeCat;
     const matchQ = !q ||
@@ -1795,6 +1809,53 @@ function renderProducts() {
       </div>
     </div>
   `;}).join('');
+}
+
+// 顯示寄賣商品（依寄賣商分組）
+function renderConsignProducts(q, sort) {
+  const grid = document.getElementById('product-grid');
+  let list = consignItems.filter(it => {
+    const matchQ = !q ||
+      (it.name || '').toLowerCase().includes(q) ||
+      (it.barcode || '').toLowerCase().includes(q) ||
+      (it.sku || '').toLowerCase().includes(q);
+    const hideSoldOut = !q && (parseInt(it.stock) || 0) === 0;
+    return matchQ && !hideSoldOut;
+  });
+
+  if (sort === 'price-asc') list.sort((a,b) => a.price - b.price);
+  if (sort === 'price-desc') list.sort((a,b) => b.price - a.price);
+  if (sort === 'name') list.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="icon">🏬</div><p>沒有寄賣商品</p></div>';
+    return;
+  }
+
+  grid.innerHTML = list.map(it => {
+    const stock = parseInt(it.stock) || 0;
+    const inCart = cart.filter(c => c.consignItemId === it.id).reduce((s,c) => s + c.qty, 0);
+    const vendor = consignVendors.find(v => v.id === it.vendorId);
+    return `
+    <div class="product-card ${stock<=3?'low-stock':''} ${inCart>0?'in-cart':''}" onclick="selectConsignProduct('${it.id}')" style="border-left:3px solid var(--gold);">
+      ${inCart > 0 ? `<div class="cart-badge">${inCart}</div>` : ''}
+      <div class="p-cat" style="color:var(--gold);">🏬 ${vendor ? vendor.name : '寄賣'}</div>
+      <div class="p-name">${escapeHtml(it.name)}</div>
+      <div class="p-variants">${it.color || '—'}${it.size ? ' · '+it.size : ''}</div>
+      <div class="p-bottom">
+        <div class="p-price">${fmt(it.price)}</div>
+        <div class="p-stock">${stock===0?'售完':stock<=3?'剩 '+stock:'庫存 '+stock}</div>
+      </div>
+    </div>
+  `;}).join('');
+}
+
+// 點選寄賣商品加入購物車
+function selectConsignProduct(id) {
+  const it = consignItems.find(x => x.id === id);
+  if (!it) return;
+  if ((parseInt(it.stock) || 0) <= 0) { toast('此寄賣商品已無庫存！', 'error'); return; }
+  addConsignItemToCart(it);
 }
 
 function selectProduct(id) {
@@ -4414,6 +4475,11 @@ let pendingImportData = null; // 暫存待匯入的 QR Code 資料
 let currentVqrVendorId = null;
 
 function renderConsign() {
+  // 同步更新收銀台分類列（讓「🏬 寄賣」分類正確顯示/隱藏）
+  if (typeof renderCatBar === 'function') {
+    try { renderCatBar(); } catch(e) {}
+  }
+
   // 統計
   const totalVendors = consignVendors.length;
   const totalItems = consignItems.length;
