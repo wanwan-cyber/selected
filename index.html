@@ -1258,28 +1258,20 @@
       <button class="modal-close" onclick="closeModal('cpaste-modal')">×</button>
     </div>
     <div class="modal-body">
-      <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--primary);line-height:1.7;">
-        <strong>📋 兩種匯入方式：</strong><br>
-        <strong>方式 1：</strong>把寄賣商傳給你的 JSON 內容貼到下方<br>
-        <strong>方式 2：</strong>點下方「📁 選擇檔案」載入 JSON 檔
+      <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--primary);line-height:1.6;">
+        📋 把寄賣商傳給你的 JSON 內容貼到下方，或點「📁 選擇檔案」載入 JSON 檔
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <input type="file" id="cpaste-file" accept=".json,.txt,application/json" style="display:none;" onchange="loadConsignJSONFile(event)">
         <button class="btn btn-gold btn-sm" onclick="document.getElementById('cpaste-file').click()">📁 選擇 JSON 檔案</button>
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('cpaste-text').value='';">🗑 清空</button>
+        <button class="btn btn-primary btn-sm" onclick="parseConsignPaste()" style="margin-left:auto;font-weight:700;">✓ 解析並預覽</button>
       </div>
-      <textarea id="cpaste-text" rows="8" placeholder='貼上寄賣商給你的 JSON 內容...
-
-格式範例：
-{
-  "type": "consign_import_v1",
-  "vendorName": "海邊小屋",
-  "items": [...]
-}' style="width:100%;padding:10px;border:1px solid var(--border);border-radius:7px;font-family:monospace;font-size:11px;outline:none;background:var(--bg);"></textarea>
+      <textarea id="cpaste-text" rows="6" placeholder="貼上寄賣商給你的 JSON 內容..." style="width:100%;max-height:200px;padding:10px;border:1px solid var(--border);border-radius:7px;font-family:monospace;font-size:11px;outline:none;background:var(--bg);"></textarea>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('cpaste-modal')">取消</button>
-      <button class="btn btn-primary" onclick="parseConsignPaste()">✓ 解析並預覽</button>
+      <button class="btn btn-primary" onclick="alert('按鈕有反應！正在解析...');parseConsignPaste()">✓ 解析並預覽</button>
     </div>
   </div>
 </div>
@@ -4961,10 +4953,55 @@ function loadConsignJSONFile(event) {
 }
 
 function parseConsignPaste() {
-  const text = document.getElementById('cpaste-text').value.trim();
-  if (!text) { toast('請貼上 JSON 內容或載入檔案', 'error'); return; }
-  if (processConsignImportQR(text)) {
+  try {
+    const ta = document.getElementById('cpaste-text');
+    if (!ta) {
+      alert('找不到輸入框 (cpaste-text)，請回報這個錯誤');
+      return;
+    }
+    const text = ta.value.trim();
+    if (!text) {
+      alert('請先貼上 JSON 內容或載入檔案');
+      return;
+    }
+
+    // 嘗試解析 JSON
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      alert('JSON 格式錯誤：\n' + e.message + '\n\n請確認資料是否完整複製。');
+      return;
+    }
+
+    // 檢查資料格式
+    if (!data || typeof data !== 'object') {
+      alert('資料格式錯誤：不是物件');
+      return;
+    }
+    if (data.type !== 'consign_import_v1') {
+      alert('這不是寄賣商品匯入資料\n（type 應該是 consign_import_v1，實際是 ' + (data.type || '空白') + '）');
+      return;
+    }
+    if (!data.items || !Array.isArray(data.items) || !data.items.length) {
+      alert('沒有商品資料（items 為空）');
+      return;
+    }
+
+    // 找出對應的寄賣商
+    let vendor = consignVendors.find(v => v.id === data.vendorId);
+    if (!vendor && data.vendorName) {
+      vendor = consignVendors.find(v => v.name === data.vendorName);
+    }
+
+    pendingImportData = { data, vendor };
+
+    // 關閉貼上 modal，開啟預覽 modal
     closeModal('cpaste-modal');
+    setTimeout(() => showImportReview(), 100);
+  } catch (err) {
+    alert('解析時出錯：' + err.message + '\n\n' + err.stack);
+    console.error(err);
   }
 }
 
