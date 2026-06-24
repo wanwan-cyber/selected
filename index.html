@@ -6006,8 +6006,46 @@ function deleteTransaction(id) {
 
   // 還原商品庫存
   let restoredCount = 0;
+  let restoredConsignCount = 0;
   if (t.items && Array.isArray(t.items)) {
     t.items.forEach(item => {
+      // 寄賣商品：依 consignItemId 或 productId 開頭 'consign_' 來判斷
+      const isConsign = item.isConsign || item.consignItemId || (item.productId && String(item.productId).startsWith('consign_'));
+
+      if (isConsign) {
+        // 取得寄賣商品 ID（可能存成 consignItemId 或 productId='consign_xxx'）
+        let ciId = item.consignItemId;
+        if (!ciId && item.productId && String(item.productId).startsWith('consign_')) {
+          ciId = String(item.productId).slice(8); // 去掉 'consign_' 前綴
+        }
+        const ci = consignItems.find(x => x.id === ciId);
+        if (ci) {
+          // 加回庫存
+          ci.stock = (parseInt(ci.stock) || 0) + item.qty;
+          // 移除最後一筆 sales 記錄（簡化處理）
+          if (ci.sales && ci.sales.length > 0) {
+            // 找到最近一筆數量相同的銷售記錄並移除
+            const lastSaleIdx = ci.sales.findLastIndex
+              ? ci.sales.findLastIndex(s => s.qty === item.qty)
+              : (() => {
+                  for (let i = ci.sales.length - 1; i >= 0; i--) {
+                    if (ci.sales[i].qty === item.qty) return i;
+                  }
+                  return -1;
+                })();
+            if (lastSaleIdx >= 0) {
+              ci.sales.splice(lastSaleIdx, 1);
+            } else {
+              // 找不到完全相符的，移除最後一筆
+              ci.sales.pop();
+            }
+          }
+          restoredConsignCount += item.qty;
+        }
+        return;
+      }
+
+      // 一般商品還原
       const p = products.find(x => x.id === item.productId);
       if (!p) return;
       // 從品名中嘗試解析顏色與尺寸（格式："基本款棉T (白 M)"）
@@ -6015,12 +6053,9 @@ function deleteTransaction(id) {
       let color = '', size = '';
       if (m) {
         const parts = m[1].trim().split(/\s+/);
-        // 第一個 token 視為顏色，第二個視為尺寸（若有的話）
         color = parts[0] || '';
         size = parts[1] || '';
-        // 若該值不在商品的顏色/尺寸清單裡，可能是 size 在前
         if (p.colors && p.colors.length && !p.colors.includes(color)) {
-          // 互換
           if (p.sizes && p.sizes.includes(color)) {
             [color, size] = [size, color];
           }
@@ -6034,6 +6069,7 @@ function deleteTransaction(id) {
       restoredCount += item.qty;
     });
     save('pos_products', products);
+    save('pos_consign_items', consignItems);
   }
 
   // 回扣會員消費
@@ -6052,7 +6088,16 @@ function deleteTransaction(id) {
   renderMemberCards();
   renderProductsTable();
   renderProducts();
-  toast(`交易已刪除，還原 ${restoredCount} 件商品庫存`, 'warn');
+  // 寄賣管理頁也要更新
+  if (document.getElementById('consign-page').classList.contains('active')) {
+    renderConsign();
+  }
+
+  // Toast 訊息
+  const parts = [];
+  if (restoredCount > 0) parts.push(`還原 ${restoredCount} 件一般商品`);
+  if (restoredConsignCount > 0) parts.push(`還原 ${restoredConsignCount} 件寄賣商品`);
+  toast(`交易已刪除${parts.length ? '，' + parts.join('、') : ''}`, 'warn');
 }
 
 // ======================== INIT ========================
