@@ -9,6 +9,8 @@
 <meta name="theme-color" content="#1a2e25">
 <!-- ZXing-js for barcode scanning (cross-browser, supports iOS Safari) -->
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
+<!-- QRCode generation for consign vendor links -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <!-- ZXing 條碼辨識函式庫（iOS Safari 沒有 BarcodeDetector 用這個） -->
 <script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 <title>服飾精品 POS 系統</title>
@@ -619,6 +621,12 @@
       <button data-page="stocktake" onclick="showPage('stocktake', this)">
         <span class="nav-icon">📋</span><span class="nav-label">盤點</span>
       </button>
+      <button data-page="soldout" onclick="showPage('soldout', this)">
+        <span class="nav-icon">📭</span><span class="nav-label">售完</span>
+      </button>
+      <button data-page="consign" onclick="showPage('consign', this)">
+        <span class="nav-icon">🏬</span><span class="nav-label">寄賣</span>
+      </button>
       <button data-page="report" onclick="showPage('report', this)">
         <span class="nav-icon">📊</span><span class="nav-label">報表</span>
       </button>
@@ -868,6 +876,48 @@
             <button class="btn btn-primary" onclick="finishStockTake()">✓ 完成盤點</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- SOLD OUT PAGE -->
+    <div class="page" id="soldout-page">
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title"><span class="title-bar"></span>📭 售完商品</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="so-filter" onchange="renderSoldOut()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+              <option value="all">全部售完</option>
+              <option value="full">完全售完</option>
+              <option value="low">低庫存（≤5 件）</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 統計卡 -->
+        <div id="soldout-stats" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;"></div>
+
+        <!-- 商品清單 -->
+        <div id="soldout-list"></div>
+      </div>
+    </div>
+
+    <!-- CONSIGNMENT PAGE -->
+    <div class="page" id="consign-page">
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title"><span class="title-bar"></span>🏬 寄賣管理</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" onclick="openConsignVendorModal()">＋ 新增寄賣商</button>
+            <button class="btn btn-gold" onclick="openConsignScanImport()">📷 掃描匯入</button>
+            <button class="btn btn-primary" onclick="openConsignItemModal()" id="cn-add-item-btn">＋ 新增寄賣商品</button>
+          </div>
+        </div>
+
+        <!-- 統計卡 -->
+        <div id="consign-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;"></div>
+
+        <!-- 寄賣商列表 + 商品 -->
+        <div id="consign-list"></div>
       </div>
     </div>
 
@@ -1175,6 +1225,140 @@
   }
 </style>
 
+<!-- Vendor Portal QR Modal -->
+<div class="modal-overlay" id="vqr-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <h3>📱 寄賣商專屬連結</h3>
+      <button class="modal-close" onclick="closeModal('vqr-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="vqr-vendor-name" style="text-align:center;font-weight:700;color:var(--primary);font-size:15px;margin-bottom:8px;"></div>
+      <div style="background:#fff;padding:20px;border-radius:12px;text-align:center;">
+        <div id="vqr-container"></div>
+      </div>
+      <div style="margin-top:14px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:12px;font-size:12px;color:var(--primary);line-height:1.7;">
+        📌 <strong>分享方式</strong><br>
+        1️⃣ 把這個 QR Code 給寄賣商掃<br>
+        2️⃣ 或直接傳網址給他們：<br>
+        <div id="vqr-url" style="margin-top:6px;padding:6px 10px;background:#fff;border:1px solid var(--border);border-radius:5px;font-family:monospace;font-size:10px;word-break:break-all;color:var(--text-muted);"></div>
+        <button class="btn btn-outline btn-sm" onclick="copyVendorURL()" style="margin-top:8px;font-size:11px;">📋 複製網址</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('vqr-modal')">關閉</button>
+      <button class="btn btn-gold" onclick="downloadVendorQR()" style="margin-left:auto;">💾 下載 QR Code</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consign Import Review Modal -->
+<div class="modal-overlay" id="cimport-modal">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-head">
+      <h3>📥 寄賣商品匯入確認</h3>
+      <button class="modal-close" onclick="closeModal('cimport-modal')">×</button>
+    </div>
+    <div class="modal-body" id="cimport-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cimport-modal')">取消</button>
+      <button class="btn btn-primary" onclick="confirmConsignImport()" id="cimport-confirm-btn">✓ 確認匯入</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignment Vendor Modal -->
+<div class="modal-overlay" id="cv-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3 id="cv-modal-title">新增寄賣商</h3>
+      <button class="modal-close" onclick="closeModal('cv-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>寄賣商名稱 *</label><input type="text" id="cv-name" placeholder="例：海邊小屋手作飾品"></div>
+      <div class="form-row">
+        <div class="form-group"><label>聯絡人</label><input type="text" id="cv-contact" placeholder="老闆姓名"></div>
+        <div class="form-group"><label>電話</label><input type="text" id="cv-phone"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>每月租金 ($)</label><input type="number" id="cv-rent" min="0" placeholder="例 3000"></div>
+        <div class="form-group"><label>開始日期</label><input type="date" id="cv-start-date"></div>
+      </div>
+      <div class="form-group"><label>備註</label><textarea id="cv-note" rows="2" placeholder="位置、特殊條件等"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="deleteConsignVendor()" id="cv-delete-btn" style="display:none;">🗑 刪除</button>
+      <button class="btn btn-outline" onclick="closeModal('cv-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveConsignVendor()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignment Item Modal -->
+<div class="modal-overlay" id="ci-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3 id="ci-modal-title">新增寄賣商品</h3>
+      <button class="modal-close" onclick="closeModal('ci-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>寄賣商 *</label>
+        <select id="ci-vendor"></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>商品名稱 *</label><input type="text" id="ci-name" placeholder="例：手工銀飾項鍊"></div>
+        <div class="form-group"><label>款號</label><input type="text" id="ci-sku" placeholder="廠商款號"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>條碼 *
+            <button type="button" onclick="autoGenConsignBarcode()" style="font-size:11px;padding:2px 8px;background:var(--gold);color:#fff;border:none;border-radius:4px;cursor:pointer;margin-left:6px;">🎲 自動產生</button>
+          </label>
+          <input type="text" id="ci-barcode" placeholder="掃描或自動產生">
+        </div>
+        <div class="form-group"><label>售價 ($) *</label><input type="number" id="ci-price" min="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>顏色（選填）</label><input type="text" id="ci-color" placeholder="例：銀色"></div>
+        <div class="form-group"><label>尺寸（選填）</label><input type="text" id="ci-size" placeholder="例：F"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>進貨數量</label><input type="number" id="ci-stock" min="0" value="1"></div>
+        <div class="form-group"><label>分類</label><input type="text" id="ci-cat" placeholder="例：飾品"></div>
+      </div>
+      <div class="form-group"><label>備註</label><textarea id="ci-note" rows="2"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" onclick="deleteConsignItem()" id="ci-delete-btn" style="display:none;">🗑 刪除</button>
+      <button class="btn btn-outline" onclick="closeModal('ci-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveConsignItem()">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Consignment Rent Modal -->
+<div class="modal-overlay" id="cr-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <h3>💰 租金繳費紀錄</h3>
+      <button class="modal-close" onclick="closeModal('cr-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="cr-vendor-info" style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--primary);"></div>
+      <div style="display:flex;gap:8px;align-items:end;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;"><label style="font-size:11px;color:var(--text-muted);">月份</label><input type="month" id="cr-month" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></div>
+        <div style="flex:1;min-width:120px;"><label style="font-size:11px;color:var(--text-muted);">金額</label><input type="number" id="cr-amount" placeholder="0" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;"></div>
+        <button class="btn btn-gold btn-sm" onclick="addRentPayment()">＋ 記錄收款</button>
+      </div>
+      <div id="cr-list" style="border:1px solid var(--border);border-radius:8px;max-height:280px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cr-modal')">關閉</button>
+    </div>
+  </div>
+</div>
+
 <!-- Stock Take History Modal -->
 <div class="modal-overlay" id="sthist-modal">
   <div class="modal" style="max-width:720px;">
@@ -1470,6 +1654,8 @@ function showPage(p, btn) {
   if (btn) btn.classList.add('active');
   if (p === 'report') renderReport();
   if (p === 'stocktake') initStockTake();
+  if (p === 'soldout') renderSoldOut();
+  if (p === 'consign') renderConsign();
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
@@ -1511,15 +1697,49 @@ function onBarcodeSubmit() {
     return;
   }
 
-  // 2. 再比對商品條碼
+  // 2. 比對一般商品條碼
   const p = products.find(x => x.barcode && x.barcode === code);
   if (p) {
     selectProduct(p.id);
     return;
   }
 
+  // 3. 比對寄賣商品條碼
+  const ci = consignItems.find(x => x.barcode && x.barcode === code);
+  if (ci) {
+    addConsignItemToCart(ci);
+    return;
+  }
+
   toast(`找不到條碼：${code}`, 'error');
   inp.focus();
+}
+
+// 把寄賣商品加入購物車
+function addConsignItemToCart(ci) {
+  if (ci.stock <= 0) {
+    if (!confirm(`「${ci.name}」庫存不足（剩 ${ci.stock} 件），仍要加入嗎？`)) return;
+  }
+  const key = 'consign_' + ci.id + '||';
+  const existing = cart.find(c => c.key === key);
+  if (existing) {
+    existing.qty += 1;
+  } else {
+    cart.push({
+      key,
+      productId: 'consign_' + ci.id,
+      consignItemId: ci.id, // 標記為寄賣
+      isConsign: true,
+      name: `🏬 ${ci.name}`,
+      color: ci.color || '',
+      size: ci.size || '',
+      price: ci.price,
+      qty: 1,
+    });
+  }
+  renderCart();
+  calcTotals();
+  toast(`🏬 寄賣商品 ${ci.name} 已加入`, 'success');
 }
 
 // 頁面載入後自動 focus 條碼輸入框
@@ -2099,11 +2319,26 @@ function doCheckout() {
     }
   }
 
-  // Update stock
+  // Update stock（一般商品 + 寄賣商品）
   cart.forEach(ci => {
-    deductStock(ci.productId, ci.color, ci.size, ci.qty);
+    if (ci.isConsign && ci.consignItemId) {
+      // 寄賣商品：扣寄賣庫存 + 記錄銷售
+      const item = consignItems.find(x => x.id === ci.consignItemId);
+      if (item) {
+        item.stock = Math.max(0, (item.stock || 0) - ci.qty);
+        if (!item.sales) item.sales = [];
+        item.sales.push({
+          date: new Date().toLocaleDateString('zh-TW') + ' ' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }),
+          qty: ci.qty,
+        });
+      }
+    } else {
+      // 一般商品
+      deductStock(ci.productId, ci.color, ci.size, ci.qty);
+    }
   });
   save('pos_products', products);
+  save('pos_consign_items', consignItems);
 
   // Update member
   const pointsEarned = selectedMember ? Math.floor(total / 10) : 0;
@@ -4095,6 +4330,770 @@ function deleteCoupon(id) {
   renderCoupons(); toast('優惠券已刪除', 'warn');
 }
 
+// ======================== SOLD OUT PAGE ========================
+function renderSoldOut() {
+  const filter = document.getElementById('so-filter').value;
+  let list = products.filter(p => {
+    const stock = getProductStock(p);
+    if (filter === 'full') return stock === 0;
+    if (filter === 'low') return stock > 0 && stock <= 5;
+    return stock <= 5; // 全部：售完 + 低庫存
+  });
+
+  // 排序：售完優先、再低庫存
+  list.sort((a, b) => getProductStock(a) - getProductStock(b));
+
+  // 統計
+  const soldOutCount = products.filter(p => getProductStock(p) === 0).length;
+  const lowStockCount = products.filter(p => {
+    const s = getProductStock(p);
+    return s > 0 && s <= 5;
+  }).length;
+  const soldOutValue = products
+    .filter(p => getProductStock(p) === 0)
+    .reduce((s, p) => s + (p.price || 0), 0);
+
+  document.getElementById('soldout-stats').innerHTML = `
+    <div class="stat-card" style="background:linear-gradient(135deg,#fde8e8,#fff);border-color:var(--danger);">
+      <div class="sc-label">❌ 完全售完</div>
+      <div class="sc-value" style="color:var(--danger);">${soldOutCount}</div>
+      <div class="sc-sub">商品款數</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#fff7e6,#fff);border-color:var(--warning);">
+      <div class="sc-label">⚠ 低庫存</div>
+      <div class="sc-value" style="color:var(--warning);">${lowStockCount}</div>
+      <div class="sc-sub">≤ 5 件</div>
+    </div>
+    <div class="stat-card stat-today">
+      <div class="sc-label">💰 售完商品總值</div>
+      <div class="sc-value">${fmt(soldOutValue)}</div>
+      <div class="sc-sub">需補貨估值</div>
+    </div>
+  `;
+
+  const listEl = document.getElementById('soldout-list');
+  if (!list.length) {
+    listEl.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📦</div>
+        <p>太棒了！${filter === 'full' ? '沒有完全售完的商品' : filter === 'low' ? '沒有低庫存商品' : '所有商品庫存都充足'}</p>
+      </div>
+    `;
+    return;
+  }
+
+  // 按廠商分組
+  const groups = {};
+  list.forEach(p => {
+    const v = p.vendor || '(未指定廠商)';
+    if (!groups[v]) groups[v] = [];
+    groups[v].push(p);
+  });
+
+  listEl.innerHTML = Object.entries(groups).map(([vendor, items]) => {
+    const vendorCode = getVendorCode(vendor);
+    return `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:var(--shadow);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">
+          <div style="font-weight:700;color:var(--primary);font-size:14px;">
+            🏪 ${vendor}
+            ${vendorCode ? `<span style="font-family:monospace;color:var(--gold);font-size:11px;margin-left:4px;">[${vendorCode}]</span>` : ''}
+          </div>
+          <span class="badge" style="background:var(--bg);color:var(--text-muted);">${items.length} 款</span>
+        </div>
+        <div style="display:grid;gap:8px;">
+          ${items.map(p => {
+            const stock = getProductStock(p);
+            const stockColor = stock === 0 ? 'var(--danger)' : 'var(--warning)';
+            const stockLabel = stock === 0 ? '售完' : `剩 ${stock}`;
+            const imgUrl = (p.images && p.images[0]) || p.image || '';
+            return `
+              <div style="display:flex;gap:10px;align-items:center;padding:8px;background:var(--bg);border-radius:8px;cursor:pointer;transition:background .15s;" onclick="openProductModal('${p.id}')" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--bg)'">
+                <div style="width:48px;height:48px;border-radius:6px;overflow:hidden;background:var(--surface2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;">
+                  ${imgUrl ? `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:cover;">` : '👕'}
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;color:var(--primary);font-size:13px;line-height:1.3;">${p.name}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                    ${p.cat ? `${p.cat} · ` : ''}<span style="font-family:monospace;">${p.barcode || p.sku || '—'}</span>
+                  </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                  <div style="font-size:13px;font-weight:800;color:${stockColor};">${stockLabel}</div>
+                  <div style="font-size:11px;color:var(--gold);font-weight:700;">${fmt(p.price)}</div>
+                </div>
+                <button onclick="event.stopPropagation();quickRestock('${p.id}')" title="快速補貨" style="background:var(--gold);color:#fff;border:none;border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:14px;flex-shrink:0;">+</button>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 快速補貨
+function quickRestock(productId) {
+  const p = products.find(x => x.id === productId);
+  if (!p) return;
+  const hasVariants = (p.colors && p.colors.length > 0) || (p.sizes && p.sizes.length > 0);
+  const qtyStr = prompt(`「${p.name}」要補多少件？\n（${hasVariants ? '會平均分配到各規格' : '單一規格'}）`, '5');
+  if (qtyStr === null) return;
+  const qty = parseInt(qtyStr);
+  if (!qty || qty < 1) { toast('請輸入正整數', 'warn'); return; }
+
+  if (!p.stockMap) p.stockMap = {};
+  const keys = Object.keys(p.stockMap);
+
+  if (keys.length === 0) {
+    p.stockMap['|'] = qty;
+  } else if (keys.length === 1) {
+    p.stockMap[keys[0]] = (parseInt(p.stockMap[keys[0]]) || 0) + qty;
+  } else {
+    // 多規格：平均分配
+    const avg = Math.floor(qty / keys.length);
+    const remainder = qty - avg * keys.length;
+    keys.forEach((k, i) => {
+      p.stockMap[k] = (parseInt(p.stockMap[k]) || 0) + avg + (i < remainder ? 1 : 0);
+    });
+  }
+  p.stock = calcStockTotal(p.stockMap);
+  save('pos_products', products);
+  renderSoldOut();
+  renderProducts();
+  renderProductsTable();
+  toast(`✓ 已補 ${p.name} ${qty} 件，庫存：${p.stock}`, 'success');
+}
+
+// ======================== CONSIGNMENT (寄賣) ========================
+// 寄賣商建檔頁面網址（部署後可以在這裡改）
+const CONSIGN_PORTAL_URL = 'https://wanwan-cyber.github.io/wanwanselected/';
+
+// 資料結構：
+// consignVendors: [{ id, name, contact, phone, rent, startDate, note, rentPayments: [{month, amount, paidAt}] }]
+// consignItems:   [{ id, vendorId, name, sku, barcode, price, color, size, stock, cat, note, sales: [{date, qty}] }]
+let consignVendors = load('pos_consign_vendors', []);
+let consignItems = load('pos_consign_items', []);
+let editConsignVendorId = null;
+let editConsignItemId = null;
+let currentRentVendorId = null;
+let pendingImportData = null; // 暫存待匯入的 QR Code 資料
+let currentVqrVendorId = null;
+
+function renderConsign() {
+  // 統計
+  const totalVendors = consignVendors.length;
+  const totalItems = consignItems.length;
+  // 本月已收租金
+  const ym = new Date().toISOString().slice(0, 7); // "2026-06"
+  let collectedRent = 0;
+  let unpaidVendors = 0;
+  consignVendors.forEach(v => {
+    const paid = (v.rentPayments || []).find(p => p.month === ym);
+    if (paid) collectedRent += paid.amount;
+    else if (v.rent > 0) unpaidVendors++;
+  });
+  // 本月寄賣銷售
+  const monthSales = consignItems.reduce((sum, it) => {
+    return sum + (it.sales || []).filter(s => s.date.startsWith(ym.replace('-', '/')))
+      .reduce((s, sale) => s + sale.qty * it.price, 0);
+  }, 0);
+
+  document.getElementById('consign-stats').innerHTML = `
+    <div class="stat-card stat-today">
+      <div class="sc-label">🏬 寄賣商</div>
+      <div class="sc-value">${totalVendors}</div>
+      <div class="sc-sub">共 ${totalItems} 件商品</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#e8f5e9,#fff);border-color:var(--success);">
+      <div class="sc-label">💰 本月已收租金</div>
+      <div class="sc-value" style="color:var(--success);">${fmt(collectedRent)}</div>
+      <div class="sc-sub">${new Date().getMonth()+1} 月</div>
+    </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#fff7e6,#fff);border-color:${unpaidVendors > 0 ? 'var(--warning)' : 'var(--border)'};">
+      <div class="sc-label">⚠ 本月未繳</div>
+      <div class="sc-value" style="color:${unpaidVendors > 0 ? 'var(--warning)' : 'var(--success)'};">${unpaidVendors}</div>
+      <div class="sc-sub">${unpaidVendors > 0 ? '個寄賣商' : '全部已繳'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="sc-label">📊 本月寄賣銷售</div>
+      <div class="sc-value">${fmt(monthSales)}</div>
+      <div class="sc-sub">寄賣商收入</div>
+    </div>
+  `;
+
+  // 沒寄賣商 → 顯示空狀態
+  if (!totalVendors) {
+    document.getElementById('consign-list').innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🏬</div>
+        <p>還沒有任何寄賣商<br><span style="font-size:12px;color:var(--text-muted);">點上方「＋ 新增寄賣商」開始</span></p>
+      </div>
+    `;
+    return;
+  }
+
+  // 列出每個寄賣商
+  document.getElementById('consign-list').innerHTML = consignVendors.map(v => {
+    const items = consignItems.filter(it => it.vendorId === v.id);
+    const paid = (v.rentPayments || []).find(p => p.month === ym);
+    const rentStatus = !v.rent ? '<span style="color:var(--text-muted);font-size:11px;">未設定租金</span>'
+      : paid ? `<span class="badge badge-green">✓ 本月已繳 $${fmt(paid.amount).replace('$','')}</span>`
+      : `<span class="badge badge-red">⚠ 本月未繳 $${fmt(v.rent).replace('$','')}</span>`;
+
+    // 寄賣商銷售統計
+    const totalSales = items.reduce((s, it) => s + (it.sales || []).reduce((ss, sale) => ss + sale.qty * it.price, 0), 0);
+    const totalSold = items.reduce((s, it) => s + (it.sales || []).reduce((ss, sale) => ss + sale.qty, 0), 0);
+    const totalStock = items.reduce((s, it) => s + (parseInt(it.stock) || 0), 0);
+
+    return `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:var(--shadow);">
+        <!-- 寄賣商頭部 -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+          <div style="flex:1;min-width:200px;">
+            <div style="font-weight:800;color:var(--primary);font-size:16px;">🏬 ${v.name}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.6;">
+              ${v.contact ? `👤 ${v.contact}` : ''} ${v.phone ? `📞 ${v.phone}` : ''}
+              ${v.startDate ? ` · 自 ${v.startDate}` : ''}
+              ${v.rent > 0 ? ` · 月租 $${fmt(v.rent).replace('$','')}` : ''}
+            </div>
+            <div style="margin-top:6px;">${rentStatus}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="showVendorPortalQR('${v.id}')">📱 專屬連結</button>
+            <button class="btn btn-outline btn-sm" onclick="openRentModal('${v.id}')">💰 租金紀錄</button>
+            <button class="btn btn-outline btn-sm" onclick="editConsignVendor('${v.id}')">編輯</button>
+          </div>
+        </div>
+
+        <!-- 銷售統計 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+          <div style="background:var(--bg);padding:8px 12px;border-radius:8px;text-align:center;">
+            <div style="font-size:10px;color:var(--text-muted);">📦 庫存</div>
+            <div style="font-weight:800;color:var(--primary);font-size:18px;">${totalStock}</div>
+          </div>
+          <div style="background:var(--bg);padding:8px 12px;border-radius:8px;text-align:center;">
+            <div style="font-size:10px;color:var(--text-muted);">🛒 累計賣出</div>
+            <div style="font-weight:800;color:var(--success);font-size:18px;">${totalSold}</div>
+          </div>
+          <div style="background:linear-gradient(135deg,var(--gold),#d9bb6a);padding:8px 12px;border-radius:8px;text-align:center;color:#fff;">
+            <div style="font-size:10px;opacity:.8;">💵 累計銷售額</div>
+            <div style="font-weight:800;font-size:18px;">${fmt(totalSales)}</div>
+          </div>
+        </div>
+
+        <!-- 商品列表 -->
+        ${items.length ? `
+          <div style="display:grid;gap:6px;">
+            ${items.map(it => {
+              const sold = (it.sales || []).reduce((s, sale) => s + sale.qty, 0);
+              const stockColor = it.stock === 0 ? 'var(--danger)' : it.stock <= 3 ? 'var(--warning)' : 'var(--primary)';
+              return `
+                <div onclick="editConsignItem('${it.id}')" style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--bg);border-radius:8px;cursor:pointer;">
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;color:var(--primary);font-size:13px;">${it.name}</div>
+                    <div style="font-size:11px;color:var(--text-muted);font-family:monospace;">${it.barcode || it.sku || '—'} ${it.color ? `· ${it.color}` : ''} ${it.size ? `· ${it.size}` : ''}</div>
+                  </div>
+                  <div style="text-align:right;font-size:11px;">
+                    <div style="color:${stockColor};font-weight:700;">庫存 ${it.stock}</div>
+                    <div style="color:var(--text-muted);">已賣 ${sold}</div>
+                  </div>
+                  <div style="font-weight:800;color:var(--gold);font-size:14px;font-variant-numeric:tabular-nums;">${fmt(it.price)}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : `
+          <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">尚未建立寄賣商品</div>
+        `}
+      </div>
+    `;
+  }).join('');
+}
+
+// === 寄賣商 CRUD ===
+function openConsignVendorModal() {
+  editConsignVendorId = null;
+  document.getElementById('cv-modal-title').textContent = '新增寄賣商';
+  document.getElementById('cv-delete-btn').style.display = 'none';
+  ['cv-name','cv-contact','cv-phone','cv-rent','cv-start-date','cv-note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cv-start-date').value = new Date().toISOString().slice(0, 10);
+  openModal('cv-modal');
+}
+
+function editConsignVendor(id) {
+  const v = consignVendors.find(x => x.id === id);
+  if (!v) return;
+  editConsignVendorId = id;
+  document.getElementById('cv-modal-title').textContent = '編輯寄賣商';
+  document.getElementById('cv-delete-btn').style.display = '';
+  document.getElementById('cv-name').value = v.name || '';
+  document.getElementById('cv-contact').value = v.contact || '';
+  document.getElementById('cv-phone').value = v.phone || '';
+  document.getElementById('cv-rent').value = v.rent || '';
+  document.getElementById('cv-start-date').value = v.startDate || '';
+  document.getElementById('cv-note').value = v.note || '';
+  openModal('cv-modal');
+}
+
+function saveConsignVendor() {
+  const name = document.getElementById('cv-name').value.trim();
+  if (!name) { toast('請輸入寄賣商名稱', 'error'); return; }
+  const data = {
+    name,
+    contact: document.getElementById('cv-contact').value.trim(),
+    phone: document.getElementById('cv-phone').value.trim(),
+    rent: parseFloat(document.getElementById('cv-rent').value) || 0,
+    startDate: document.getElementById('cv-start-date').value,
+    note: document.getElementById('cv-note').value.trim(),
+  };
+  if (editConsignVendorId) {
+    const idx = consignVendors.findIndex(v => v.id === editConsignVendorId);
+    if (idx >= 0) consignVendors[idx] = { ...consignVendors[idx], ...data };
+  } else {
+    consignVendors.push({ id: uid(), ...data, rentPayments: [] });
+  }
+  save('pos_consign_vendors', consignVendors);
+  closeModal('cv-modal');
+  renderConsign();
+  toast(editConsignVendorId ? '已更新寄賣商' : '已新增寄賣商', 'success');
+}
+
+function deleteConsignVendor() {
+  if (!editConsignVendorId) return;
+  const v = consignVendors.find(x => x.id === editConsignVendorId);
+  const itemCount = consignItems.filter(it => it.vendorId === editConsignVendorId).length;
+  if (!confirm(`確定刪除寄賣商「${v.name}」？${itemCount > 0 ? `\n（會同時刪除底下 ${itemCount} 件寄賣商品）` : ''}`)) return;
+  consignVendors = consignVendors.filter(x => x.id !== editConsignVendorId);
+  consignItems = consignItems.filter(it => it.vendorId !== editConsignVendorId);
+  save('pos_consign_vendors', consignVendors);
+  save('pos_consign_items', consignItems);
+  closeModal('cv-modal');
+  renderConsign();
+  toast('已刪除', 'warn');
+}
+
+// === 寄賣商品 CRUD ===
+function openConsignItemModal() {
+  if (!consignVendors.length) {
+    toast('請先新增寄賣商', 'warn');
+    openConsignVendorModal();
+    return;
+  }
+  editConsignItemId = null;
+  document.getElementById('ci-modal-title').textContent = '新增寄賣商品';
+  document.getElementById('ci-delete-btn').style.display = 'none';
+  ['ci-name','ci-sku','ci-barcode','ci-price','ci-color','ci-size','ci-cat','ci-note'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ci-stock').value = 1;
+  // 填入寄賣商選項
+  document.getElementById('ci-vendor').innerHTML = consignVendors.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+  openModal('ci-modal');
+}
+
+function editConsignItem(id) {
+  const it = consignItems.find(x => x.id === id);
+  if (!it) return;
+  editConsignItemId = id;
+  document.getElementById('ci-modal-title').textContent = '編輯寄賣商品';
+  document.getElementById('ci-delete-btn').style.display = '';
+  document.getElementById('ci-vendor').innerHTML = consignVendors.map(v => `<option value="${v.id}" ${v.id===it.vendorId?'selected':''}>${v.name}</option>`).join('');
+  document.getElementById('ci-name').value = it.name || '';
+  document.getElementById('ci-sku').value = it.sku || '';
+  document.getElementById('ci-barcode').value = it.barcode || '';
+  document.getElementById('ci-price').value = it.price || '';
+  document.getElementById('ci-color').value = it.color || '';
+  document.getElementById('ci-size').value = it.size || '';
+  document.getElementById('ci-stock').value = it.stock || 0;
+  document.getElementById('ci-cat').value = it.cat || '';
+  document.getElementById('ci-note').value = it.note || '';
+  openModal('ci-modal');
+}
+
+// 寄賣商品條碼自動產生（以「C」開頭，識別寄賣 + 寄賣商首字 + 4 碼數字）
+function autoGenConsignBarcode() {
+  const vendorId = document.getElementById('ci-vendor').value;
+  const v = consignVendors.find(x => x.id === vendorId);
+  let prefix = 'C';
+  if (v) {
+    const first = (v.name || '').charAt(0);
+    if (/[A-Za-z]/.test(first)) prefix += first.toUpperCase();
+    else {
+      const pinyin = pinyinFirstLetter(first);
+      prefix += pinyin || 'X';
+    }
+  }
+  // 找一個沒用過的 4 位數字
+  for (let i = 1; i < 9999; i++) {
+    const code = prefix + String(i).padStart(4, '0');
+    if (!consignItems.some(it => it.barcode === code && it.id !== editConsignItemId) &&
+        !products.some(p => p.barcode === code)) {
+      document.getElementById('ci-barcode').value = code;
+      toast(`已產生：${code}`, 'success');
+      return;
+    }
+  }
+}
+
+function saveConsignItem() {
+  const name = document.getElementById('ci-name').value.trim();
+  if (!name) { toast('請輸入商品名稱', 'error'); return; }
+  const price = parseFloat(document.getElementById('ci-price').value);
+  if (!price || price <= 0) { toast('請輸入售價', 'error'); return; }
+  const barcode = document.getElementById('ci-barcode').value.trim().toUpperCase();
+  if (!barcode) { toast('請輸入或產生條碼', 'error'); return; }
+  // 檢查條碼是否與其他重複（不含自己）
+  if (consignItems.some(it => it.barcode === barcode && it.id !== editConsignItemId)) {
+    toast('此條碼已被其他寄賣商品使用', 'error'); return;
+  }
+  if (products.some(p => p.barcode === barcode)) {
+    toast('此條碼已被一般商品使用', 'error'); return;
+  }
+
+  const data = {
+    vendorId: document.getElementById('ci-vendor').value,
+    name,
+    sku: document.getElementById('ci-sku').value.trim().toUpperCase(),
+    barcode,
+    price,
+    color: document.getElementById('ci-color').value.trim(),
+    size: document.getElementById('ci-size').value.trim(),
+    stock: parseInt(document.getElementById('ci-stock').value) || 0,
+    cat: document.getElementById('ci-cat').value.trim(),
+    note: document.getElementById('ci-note').value.trim(),
+  };
+  if (editConsignItemId) {
+    const idx = consignItems.findIndex(it => it.id === editConsignItemId);
+    if (idx >= 0) consignItems[idx] = { ...consignItems[idx], ...data };
+  } else {
+    consignItems.push({ id: uid(), ...data, sales: [] });
+  }
+  save('pos_consign_items', consignItems);
+  closeModal('ci-modal');
+  renderConsign();
+  toast(editConsignItemId ? '已更新' : '已新增寄賣商品', 'success');
+}
+
+function deleteConsignItem() {
+  if (!editConsignItemId) return;
+  const it = consignItems.find(x => x.id === editConsignItemId);
+  if (!confirm(`確定刪除寄賣商品「${it.name}」？\n（銷售記錄也會一併刪除）`)) return;
+  consignItems = consignItems.filter(x => x.id !== editConsignItemId);
+  save('pos_consign_items', consignItems);
+  closeModal('ci-modal');
+  renderConsign();
+  toast('已刪除', 'warn');
+}
+
+// === 租金繳費紀錄 ===
+function openRentModal(vendorId) {
+  currentRentVendorId = vendorId;
+  const v = consignVendors.find(x => x.id === vendorId);
+  if (!v) return;
+  document.getElementById('cr-vendor-info').innerHTML = `
+    <strong>🏬 ${v.name}</strong><br>
+    <span style="color:var(--text-muted);font-size:12px;">月租金：$${fmt(v.rent || 0).replace('$','')}</span>
+  `;
+  document.getElementById('cr-month').value = new Date().toISOString().slice(0, 7);
+  document.getElementById('cr-amount').value = v.rent || '';
+  renderRentList();
+  openModal('cr-modal');
+}
+
+function renderRentList() {
+  const v = consignVendors.find(x => x.id === currentRentVendorId);
+  if (!v) return;
+  const payments = (v.rentPayments || []).slice().sort((a, b) => b.month.localeCompare(a.month));
+  const listEl = document.getElementById('cr-list');
+  if (!payments.length) {
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">尚無繳費紀錄</div>';
+    return;
+  }
+  listEl.innerHTML = payments.map((p, idx) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-weight:600;color:var(--primary);">${p.month}</div>
+        <div style="font-size:11px;color:var(--text-muted);">繳款於 ${p.paidAt}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-weight:800;color:var(--gold);">$${fmt(p.amount).replace('$','')}</span>
+        <button onclick="deleteRentPayment(${idx})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px;">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addRentPayment() {
+  const v = consignVendors.find(x => x.id === currentRentVendorId);
+  if (!v) return;
+  const month = document.getElementById('cr-month').value;
+  const amount = parseFloat(document.getElementById('cr-amount').value);
+  if (!month) { toast('請選擇月份', 'error'); return; }
+  if (!amount || amount <= 0) { toast('請輸入金額', 'error'); return; }
+  if (!v.rentPayments) v.rentPayments = [];
+  // 同月份覆蓋
+  const idx = v.rentPayments.findIndex(p => p.month === month);
+  const paymentData = { month, amount, paidAt: new Date().toLocaleDateString('zh-TW') };
+  if (idx >= 0) v.rentPayments[idx] = paymentData;
+  else v.rentPayments.push(paymentData);
+  save('pos_consign_vendors', consignVendors);
+  renderRentList();
+  renderConsign();
+  toast(`已記錄 ${month} 收款 $${fmt(amount).replace('$','')}`, 'success');
+}
+
+function deleteRentPayment(idx) {
+  const v = consignVendors.find(x => x.id === currentRentVendorId);
+  if (!v || !v.rentPayments) return;
+  if (!confirm('確定刪除此筆繳費紀錄？')) return;
+  v.rentPayments.splice(idx, 1);
+  save('pos_consign_vendors', consignVendors);
+  renderRentList();
+  renderConsign();
+}
+
+// === 寄賣商專屬 QR Code ===
+function showVendorPortalQR(vendorId) {
+  const v = consignVendors.find(x => x.id === vendorId);
+  if (!v) return;
+  currentVqrVendorId = vendorId;
+  // 組合專屬網址
+  const url = `${CONSIGN_PORTAL_URL}?v=${encodeURIComponent(vendorId)}&name=${encodeURIComponent(v.name)}`;
+
+  document.getElementById('vqr-vendor-name').textContent = '🏬 ' + v.name;
+  document.getElementById('vqr-url').textContent = url;
+
+  // 產生 QR Code
+  const container = document.getElementById('vqr-container');
+  container.innerHTML = '<canvas id="vqr-canvas"></canvas>';
+  if (typeof QRCode !== 'undefined') {
+    QRCode.toCanvas(document.getElementById('vqr-canvas'), url, {
+      width: 280,
+      margin: 2,
+      color: { dark: '#1a2e25', light: '#ffffff' },
+      errorCorrectionLevel: 'M'
+    });
+  } else {
+    container.innerHTML = '<div style="color:var(--danger);">QRCode 函式庫載入失敗</div>';
+  }
+  openModal('vqr-modal');
+}
+
+function copyVendorURL() {
+  const url = document.getElementById('vqr-url').textContent;
+  if (!url) return;
+  navigator.clipboard?.writeText(url).then(() => {
+    toast('✓ 網址已複製', 'success');
+  }).catch(() => {
+    // 備援
+    const range = document.createRange();
+    range.selectNode(document.getElementById('vqr-url'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    toast('✓ 網址已複製', 'success');
+  });
+}
+
+function downloadVendorQR() {
+  const canvas = document.getElementById('vqr-canvas');
+  if (!canvas) return;
+  const v = consignVendors.find(x => x.id === currentVqrVendorId);
+  const link = document.createElement('a');
+  link.download = `consign-vendor-qr-${v ? v.name : currentVqrVendorId}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+  toast('已下載', 'success');
+}
+
+// === 掃描匯入 QR Code ===
+function openConsignScanImport() {
+  // 重用既有的相機掃描，加上特殊模式
+  cameraMode = 'consign_import';
+  openCameraScannerCore('掃描寄賣商 QR Code', '對準寄賣商產生的 QR Code');
+}
+
+// 處理 QR Code 掃到的寄賣資料
+function processConsignImportQR(jsonText) {
+  let data;
+  try {
+    data = JSON.parse(jsonText);
+  } catch (e) {
+    toast('QR Code 內容無法解析（非 JSON）', 'error');
+    return false;
+  }
+  if (data.type !== 'consign_import_v1') {
+    toast('這不是寄賣匯入 QR Code', 'error');
+    return false;
+  }
+  if (!data.items || !Array.isArray(data.items) || !data.items.length) {
+    toast('沒有商品資料', 'error');
+    return false;
+  }
+
+  // 找出對應的寄賣商（依 vendorId）
+  let vendor = consignVendors.find(v => v.id === data.vendorId);
+  if (!vendor) {
+    // 用 vendorName 比對
+    if (data.vendorName) {
+      vendor = consignVendors.find(v => v.name === data.vendorName);
+    }
+  }
+
+  pendingImportData = { data, vendor };
+
+  // 關閉相機
+  closeCameraScanner();
+  // 顯示確認 modal
+  showImportReview();
+  return true;
+}
+
+function showImportReview() {
+  const { data, vendor } = pendingImportData;
+  const body = document.getElementById('cimport-body');
+
+  // 檢查每一筆是否重複（依條碼）
+  const itemRows = data.items.map((it, idx) => {
+    const dupInConsign = consignItems.find(ci => ci.barcode === it.barcode);
+    const dupInProducts = products.find(p => p.barcode === it.barcode);
+    let status, statusBadge;
+    if (dupInConsign) {
+      status = 'update';
+      statusBadge = '<span class="badge badge-orange">更新庫存</span>';
+    } else if (dupInProducts) {
+      status = 'conflict';
+      statusBadge = '<span class="badge" style="background:#fde8e8;color:var(--danger);">⚠ 條碼衝突</span>';
+    } else {
+      status = 'new';
+      statusBadge = '<span class="badge badge-green">新增</span>';
+    }
+    pendingImportData.data.items[idx]._status = status;
+    return `
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:6px 8px;font-size:11px;color:var(--text-muted);text-align:center;">${idx + 1}</td>
+        <td style="padding:6px 8px;">${escapeHtml(it.name)}</td>
+        <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--gold);font-weight:700;">${it.barcode || '—'}</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--gold);">${fmt(it.price)}</td>
+        <td style="padding:6px 8px;text-align:right;font-variant-numeric:tabular-nums;">${it.stock || 0}</td>
+        <td style="padding:6px 8px;text-align:center;">${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const newCount = data.items.filter(it => it._status === 'new').length;
+  const updateCount = data.items.filter(it => it._status === 'update').length;
+  const conflictCount = data.items.filter(it => it._status === 'conflict').length;
+
+  body.innerHTML = `
+    <div style="background:linear-gradient(135deg,#fffbf0,#fff);border:1px solid var(--gold);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+      <div style="font-weight:700;color:var(--primary);margin-bottom:6px;">
+        🏬 寄賣商：${data.vendorName || '(未提供)'}
+        ${vendor ? '<span class="badge badge-green" style="margin-left:6px;">✓ 已存在</span>' : '<span class="badge badge-orange" style="margin-left:6px;">⚠ 需要先建立寄賣商</span>'}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);">QR Code 產生於 ${new Date(data.exportedAt).toLocaleString('zh-TW')}</div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">
+        <span class="badge badge-green">${newCount} 新增</span>
+        <span class="badge badge-orange">${updateCount} 更新</span>
+        ${conflictCount > 0 ? `<span class="badge" style="background:#fde8e8;color:var(--danger);">${conflictCount} 衝突（會跳過）</span>` : ''}
+      </div>
+    </div>
+
+    ${!vendor ? `
+      <div style="background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;">
+        <strong>⚠ 找不到此寄賣商：</strong><br>
+        系統會自動建立寄賣商「${data.vendorName || '(未命名)'}」<br>
+        匯入後請到寄賣商編輯內填寫月租金、聯絡人等資料。
+      </div>
+    ` : ''}
+
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:#fff;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:500px;">
+        <thead style="background:var(--surface2);">
+          <tr>
+            <th style="padding:8px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;">#</th>
+            <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">商品名稱</th>
+            <th style="padding:8px;text-align:left;font-weight:700;color:var(--primary);font-size:11px;">條碼</th>
+            <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">售價</th>
+            <th style="padding:8px;text-align:right;font-weight:700;color:var(--primary);font-size:11px;">庫存</th>
+            <th style="padding:8px;text-align:center;font-weight:700;color:var(--primary);font-size:11px;">狀態</th>
+          </tr>
+        </thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  openModal('cimport-modal');
+}
+
+function confirmConsignImport() {
+  if (!pendingImportData) return;
+  const { data } = pendingImportData;
+  let vendor = consignVendors.find(v => v.id === data.vendorId);
+
+  // 如果寄賣商不存在 → 自動建立
+  if (!vendor) {
+    vendor = {
+      id: data.vendorId || uid(),
+      name: data.vendorName || '(QR匯入)',
+      contact: '', phone: '', rent: 0,
+      startDate: new Date().toISOString().slice(0, 10),
+      note: '由 QR Code 匯入自動建立',
+      rentPayments: [],
+    };
+    consignVendors.push(vendor);
+  }
+
+  let newCount = 0;
+  let updateCount = 0;
+  let skipCount = 0;
+
+  data.items.forEach(it => {
+    if (it._status === 'conflict') { skipCount++; return; }
+
+    if (it._status === 'update') {
+      // 更新既有寄賣商品
+      const existing = consignItems.find(ci => ci.barcode === it.barcode);
+      if (existing) {
+        existing.name = it.name;
+        existing.sku = it.sku || existing.sku;
+        existing.price = it.price;
+        existing.stock = (parseInt(existing.stock) || 0) + (parseInt(it.stock) || 0); // 累加庫存
+        existing.color = it.color || existing.color;
+        existing.size = it.size || existing.size;
+        existing.cat = it.cat || existing.cat;
+        if (it.note) existing.note = it.note;
+        updateCount++;
+      }
+    } else {
+      // 新增
+      consignItems.push({
+        id: uid(),
+        vendorId: vendor.id,
+        name: it.name,
+        sku: it.sku || '',
+        barcode: it.barcode,
+        price: it.price,
+        color: it.color || '',
+        size: it.size || '',
+        stock: parseInt(it.stock) || 0,
+        cat: it.cat || '',
+        note: it.note || '',
+        sales: [],
+      });
+      newCount++;
+    }
+  });
+
+  save('pos_consign_vendors', consignVendors);
+  save('pos_consign_items', consignItems);
+  closeModal('cimport-modal');
+  renderConsign();
+  pendingImportData = null;
+
+  toast(`✓ 已匯入：新增 ${newCount} 筆${updateCount > 0 ? `、更新 ${updateCount} 筆` : ''}${skipCount > 0 ? `、跳過 ${skipCount} 筆衝突` : ''}`, 'success');
+}
+
 // ======================== STOCK TAKE (盤點) ========================
 let stockTakeData = load('pos_stock_take_active', null); // 進行中的盤點
 let stockTakeHistory = load('pos_stock_take_history', []); // 歷史盤點紀錄
@@ -4468,6 +5467,24 @@ function processScannedCode(code) {
 
   const statusEl = document.getElementById('cam-status');
 
+  if (cameraMode === 'consign_import') {
+    // 寄賣商品 QR Code 匯入模式
+    statusEl.innerHTML = '🔍 正在解析 QR Code...';
+    statusEl.style.background = 'rgba(201,168,76,.3)';
+    if (processConsignImportQR(code)) {
+      // 成功處理會自己關掉相機
+    } else {
+      // 失敗 → 繼續等待
+      setTimeout(() => {
+        if (cameraScanning) {
+          statusEl.innerHTML = '🔍 對準寄賣商產生的 QR Code';
+          statusEl.style.background = '';
+        }
+      }, 2000);
+    }
+    return;
+  }
+
   if (cameraMode === 'pos') {
     // 收銀台模式：加入購物車或設定會員
     processPosScan(code, statusEl);
@@ -4509,23 +5526,31 @@ function processPosScan(code, statusEl) {
     return;
   }
 
-  // 再看商品
+  // 再看一般商品
   const p = products.find(x => x.barcode && x.barcode === code);
   if (p) {
-    // 若商品只有單一規格 → 直接 +1 到購物車；否則開啟規格選擇
     if (p.colors.length <= 1 && p.sizes.length <= 1) {
-      // 直接加入購物車
       addItemDirectFromCamera(p);
       const inCart = cart.filter(c => c.productId === p.id).reduce((s, c) => s + c.qty, 0);
       statusEl.innerHTML = `🛒 <strong style="color:#fff;">${p.name}</strong> · 購物車內 ${inCart} 件`;
       statusEl.style.background = 'rgba(39,174,96,.3)';
       scanHistory.unshift({ code, name: p.name, count: inCart, time: now });
     } else {
-      // 多規格 → 關閉相機，跳出規格選擇
       closeCameraScanner();
       selectProduct(p.id);
       toast(`📦 ${p.name}：請選擇規格`, 'success');
     }
+    return;
+  }
+
+  // 寄賣商品
+  const ci = consignItems.find(x => x.barcode && x.barcode === code);
+  if (ci) {
+    addConsignItemToCart(ci);
+    const inCart = cart.filter(c => c.consignItemId === ci.id).reduce((s, c) => s + c.qty, 0);
+    statusEl.innerHTML = `🏬 寄賣：<strong style="color:#fff;">${ci.name}</strong> · 購物車內 ${inCart} 件`;
+    statusEl.style.background = 'rgba(201,168,76,.3)';
+    scanHistory.unshift({ code, name: `🏬 ${ci.name}`, count: inCart, time: now });
     return;
   }
 
