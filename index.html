@@ -688,10 +688,10 @@
             <label>折扣</label>
             <select id="disc-type" onchange="calcTotals()">
               <option value="none">無折扣</option>
-              <option value="pct">% 百分比</option>
+              <option value="pct">打幾折</option>
               <option value="fixed">$ 固定金額</option>
             </select>
-            <input type="number" id="disc-val" placeholder="數值" min="0" oninput="calcTotals()">
+            <input type="number" id="disc-val" placeholder="例 9=9折" min="0" step="0.5" oninput="calcTotals()">
           </div>
           <div class="promo-row">
             <label>優惠券</label>
@@ -1098,12 +1098,15 @@
       <div class="form-row">
         <div class="form-group">
           <label>折扣類型</label>
-          <select id="cm-type">
-            <option value="pct">百分比 (%)</option>
-            <option value="fixed">固定金額 ($)</option>
+          <select id="cm-type" onchange="updateCouponValueHint()">
+            <option value="pct">打幾折</option>
+            <option value="fixed">折固定金額 ($)</option>
           </select>
         </div>
-        <div class="form-group"><label>折扣值 *</label><input type="number" id="cm-value" min="1"></div>
+        <div class="form-group">
+          <label>折扣值 * <span id="cm-value-hint" style="font-weight:400;color:var(--text-muted);font-size:11px;">（例：9 = 9 折、8.5 = 85 折）</span></label>
+          <input type="number" id="cm-value" min="0" step="0.5" placeholder="9">
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>最低消費 ($)</label><input type="number" id="cm-min" value="0" min="0"></div>
@@ -2123,12 +2126,21 @@ function calcTotals() {
   const discType = document.getElementById('disc-type').value;
   const discVal = parseFloat(document.getElementById('disc-val').value) || 0;
   let manualDisc = 0;
-  if (discType === 'pct' && discVal > 0) manualDisc = Math.round(subtotal * discVal / 100);
+  // 折扣「百分比」改成「打幾折」邏輯：填 9 = 9 折 = 折掉 10%、填 8.5 = 85 折 = 折掉 15%
+  if (discType === 'pct' && discVal > 0 && discVal < 10) {
+    manualDisc = Math.round(subtotal * (10 - discVal) / 10);
+  }
   if (discType === 'fixed' && discVal > 0) manualDisc = Math.min(discVal, subtotal);
 
   let couponDisc = 0;
   if (appliedCoupon) {
-    if (appliedCoupon.type === 'pct') couponDisc = Math.round(subtotal * appliedCoupon.value / 100);
+    if (appliedCoupon.type === 'pct') {
+      // 優惠券百分比 = 打幾折：填 9 = 9 折、填 8.5 = 85 折
+      const v = parseFloat(appliedCoupon.value);
+      if (v > 0 && v < 10) {
+        couponDisc = Math.round(subtotal * (10 - v) / 10);
+      }
+    }
     if (appliedCoupon.type === 'fixed') couponDisc = Math.min(appliedCoupon.value, subtotal);
   }
 
@@ -4273,9 +4285,20 @@ function deleteMember(id) {
 function renderCoupons() {
   const el = document.getElementById('coupon-list');
   if (!coupons.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🎟</div><p>尚無優惠券</p></div>'; return; }
-  el.innerHTML = coupons.map(c => `
+  el.innerHTML = coupons.map(c => {
+    // 顯示「打幾折」格式：值 9 = 9 折、8.5 = 85 折
+    let discLabel;
+    if (c.type === 'pct') {
+      const v = parseFloat(c.value);
+      // 把 8.5 顯示成 85 折，9 顯示成 9 折
+      const foldText = v === Math.floor(v) ? v + '折' : (v * 10) + '折';
+      discLabel = foldText;
+    } else {
+      discLabel = '-' + fmt(c.value);
+    }
+    return `
     <div class="coupon-card ${c.active?'':'inactive'}">
-      <div class="cc-discount">${c.type==='pct'?'-'+c.value+'%':'-'+fmt(c.value)}</div>
+      <div class="cc-discount">${discLabel}</div>
       <div class="cc-code">${c.code}</div>
       <div class="cc-desc">${c.name}</div>
       <div class="cc-meta">
@@ -4288,18 +4311,53 @@ function renderCoupons() {
         <button class="btn btn-danger btn-sm" onclick="deleteCoupon('${c.id}')">刪除</button>
       </div>
     </div>
-  `).join('');
+  `;}).join('');
 }
-function openCouponModal() { openModal('coupon-modal'); }
+
+function updateCouponValueHint() {
+  const type = document.getElementById('cm-type').value;
+  const hint = document.getElementById('cm-value-hint');
+  const input = document.getElementById('cm-value');
+  if (!hint) return;
+  if (type === 'pct') {
+    hint.textContent = '（例：9 = 9 折、8.5 = 85 折）';
+    input.placeholder = '9';
+    input.step = '0.5';
+  } else {
+    hint.textContent = '（折抵的金額）';
+    input.placeholder = '100';
+    input.step = '1';
+  }
+}
+
+function openCouponModal() {
+  // 重置表單
+  ['cm-code', 'cm-name', 'cm-value'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('cm-type').value = 'pct';
+  document.getElementById('cm-min').value = 0;
+  document.getElementById('cm-max-uses').value = 0;
+  document.getElementById('cm-start').value = '';
+  document.getElementById('cm-end').value = '';
+  updateCouponValueHint();
+  openModal('coupon-modal');
+}
 function saveCoupon() {
   const code = document.getElementById('cm-code').value.trim().toUpperCase();
   const name = document.getElementById('cm-name').value.trim();
   const value = parseFloat(document.getElementById('cm-value').value);
+  const type = document.getElementById('cm-type').value;
   if (!code || !name || !value) { toast('請填入完整資訊', 'error'); return; }
+  // 「打幾折」驗證：必須 0 < value < 10
+  if (type === 'pct') {
+    if (value <= 0 || value >= 10) {
+      toast('「打幾折」必須是 0~10 之間（例：9 = 9 折、5 = 5 折/半價）', 'error');
+      return;
+    }
+  }
   if (coupons.find(x => x.code === code)) { toast('代碼已存在', 'error'); return; }
   coupons.push({
     id: uid(), code, name,
-    type: document.getElementById('cm-type').value,
+    type,
     value,
     minOrder: parseFloat(document.getElementById('cm-min').value)||0,
     maxUses: parseInt(document.getElementById('cm-max-uses').value)||0,
