@@ -4561,14 +4561,8 @@ function getOutfitPart(p) {
   return 'other';
 }
 
-// 隨機挑 n 個（避免重複）
-function pickRandom(arr, n) {
-  const shuffled = arr.slice().sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, n);
-}
-
-// 生成穿搭組合
-function generateOutfits() {
+// 生成穿搭組合 — 用真的 Claude AI
+async function generateOutfits() {
   // 過濾有庫存的商品
   const inStock = products.filter(p => getProductStock(p) > 0);
   if (inStock.length < 2) {
@@ -4577,80 +4571,158 @@ function generateOutfits() {
     return;
   }
 
-  // 分組
-  const grouped = {
-    top: [], bottom: [], outer: [], dress: [], accessory: [], shoes: [], other: []
-  };
-  inStock.forEach(p => {
-    const part = getOutfitPart(p);
-    grouped[part].push(p);
-  });
+  // 顯示載入中
+  document.getElementById('outfit-body').innerHTML = `
+    <div style="text-align:center;padding:50px 20px;">
+      <div style="display:inline-block;width:48px;height:48px;border:4px solid var(--surface2);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite;"></div>
+      <div style="margin-top:18px;color:var(--primary);font-weight:700;font-size:15px;">✨ AI 正在精心搭配中...</div>
+      <div style="margin-top:6px;color:var(--text-muted);font-size:12px;">依顏色、風格、季節挑選合適組合</div>
+    </div>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+  `;
+  openModal('outfit-modal');
 
-  // 產生 3 套穿搭，優先組合：洋裝套裝 / 上+下套裝 / 隨機混搭
-  const outfits = [];
+  try {
+    // 準備傳給 AI 的商品資料（精簡）
+    const productList = inStock.map(p => ({
+      id: p.id,
+      name: p.name,
+      cat: p.cat || '未分類',
+      colors: p.colors || [],
+      sizes: p.sizes || [],
+      price: p.price,
+    }));
 
-  // 套組 1：洋裝 + 配件/外套/鞋
-  if (grouped.dress.length > 0) {
-    const dress = pickRandom(grouped.dress, 1)[0];
-    const extras = pickRandom([...grouped.accessory, ...grouped.shoes, ...grouped.outer], 2);
-    outfits.push({
-      title: '🌸 連身洋裝風',
-      items: [dress, ...extras].filter(Boolean),
+    const today = new Date();
+    const month = today.getMonth() + 1;
+    const seasonText = month >= 3 && month <= 5 ? '春季' : month >= 6 && month <= 8 ? '夏季' : month >= 9 && month <= 11 ? '秋季' : '冬季';
+
+    const prompt = `你是台灣女裝精品店「萬萬選 WANWAN SELECTED」的專業穿搭顧問。風格定位：**甜美 / 女性魅力**。
+
+現在是 ${seasonText}（${month}月），請幫我從以下店內現有商品中，挑出 3 套合適的穿搭組合給客人參考。
+
+【店內商品清單】（JSON 格式，id 是商品識別碼）：
+${JSON.stringify(productList, null, 2)}
+
+【穿搭規則】
+1. 每套必須包含 2-4 件商品（id 必須來自上方清單）
+2. 顏色要協調：粉色、米白、淺杏、奶茶、玫瑰金等甜美色系優先；避免大紅配大綠這類衝突
+3. 風格要統一：甜美、優雅、女性化、有少女感
+4. 場合多元：3 套要不同情境（例：約會、上班、休閒）
+5. 必須有合理的搭配邏輯（不要單純堆配件）
+6. 季節要符合：${seasonText}（避免冬天推薦短袖+涼鞋）
+7. 不要重複出現同一個商品 id 在不同套裡
+
+【回傳格式】（只回傳 JSON，不要其他文字、不要 markdown 包裝、不要 \`\`\` 標記）：
+{
+  "outfits": [
+    {
+      "title": "套組名稱（含 emoji，例：🌷 春日約會風）",
+      "scene": "適合場合（例：午後約會、姐妹下午茶）",
+      "reason": "為什麼這樣搭（1-2 句話，描述顏色協調、風格優勢，台灣女生口吻）",
+      "itemIds": ["id1", "id2", "id3"]
+    },
+    ...3 套
+  ]
+}`;
+
+    const proxyUrl = 'https://pos-ai.n2abc5210.workers.dev';
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 2000,
+        messages: [{
+          role: "user",
+          content: prompt
+        }]
+      })
     });
-  }
 
-  // 套組 2：上 + 下 + 配件/鞋
-  if (grouped.top.length > 0 && grouped.bottom.length > 0) {
-    const top = pickRandom(grouped.top, 1)[0];
-    const bottom = pickRandom(grouped.bottom, 1)[0];
-    const extras = pickRandom([...grouped.accessory, ...grouped.shoes], 1);
-    outfits.push({
-      title: '👕 經典上下身',
-      items: [top, bottom, ...extras].filter(Boolean),
-    });
-  }
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`AI 連線失敗：${response.status} ${errText.slice(0, 200)}`);
+    }
 
-  // 套組 3：上 + 下 + 外套
-  if (grouped.top.length > 0 && grouped.bottom.length > 0 && grouped.outer.length > 0) {
-    const top = pickRandom(grouped.top, 1)[0];
-    const bottom = pickRandom(grouped.bottom, 1)[0];
-    const outer = pickRandom(grouped.outer, 1)[0];
-    outfits.push({
-      title: '🧥 多層次穿搭',
-      items: [outer, top, bottom],
-    });
-  }
+    const data = await response.json();
+    const rawText = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
 
-  // 如果沒有湊到 3 套，補隨機混搭
-  while (outfits.length < 3 && inStock.length >= 2) {
-    const itemCount = Math.min(3, inStock.length);
-    const items = pickRandom(inStock, itemCount);
-    outfits.push({
-      title: '🎲 隨機混搭 #' + (outfits.length + 1),
-      items,
-    });
-  }
+    // 嘗試解析 JSON（移除可能的 markdown 包裝）
+    let cleanJson = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+    // 找到第一個 { 到最後一個 }
+    const firstBrace = cleanJson.indexOf('{');
+    const lastBrace = cleanJson.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      cleanJson = cleanJson.slice(firstBrace, lastBrace + 1);
+    }
 
-  // 渲染
-  if (!outfits.length) {
-    document.getElementById('outfit-body').innerHTML = '<div class="empty-state"><div class="icon">👗</div><p>商品分類過少，無法產生穿搭<br><span style="font-size:11px;color:var(--text-muted);">建議在商品「分類」填入「上衣/裙/外套」等</span></p></div>';
-    openModal('outfit-modal');
-    return;
-  }
+    let aiResult;
+    try {
+      aiResult = JSON.parse(cleanJson);
+    } catch (e) {
+      console.error('AI 回傳:', rawText);
+      throw new Error('AI 回傳格式無法解析');
+    }
 
+    if (!aiResult.outfits || !Array.isArray(aiResult.outfits) || aiResult.outfits.length === 0) {
+      throw new Error('AI 沒有產生有效的穿搭');
+    }
+
+    // 把 itemIds 轉成實際商品物件
+    const outfits = aiResult.outfits.map(o => {
+      const items = (o.itemIds || []).map(id => inStock.find(p => p.id === id)).filter(Boolean);
+      return {
+        title: o.title || '✨ 穿搭推薦',
+        scene: o.scene || '',
+        reason: o.reason || '',
+        items,
+      };
+    }).filter(o => o.items.length >= 2); // 至少要有 2 件
+
+    if (outfits.length === 0) {
+      throw new Error('AI 選的商品 id 對不上');
+    }
+
+    renderOutfits(outfits);
+    window.__currentOutfits = outfits;
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('outfit-body').innerHTML = `
+      <div style="text-align:center;padding:30px 20px;">
+        <div style="font-size:42px;margin-bottom:10px;">😔</div>
+        <div style="color:var(--danger);font-weight:700;margin-bottom:8px;">AI 穿搭推薦失敗</div>
+        <div style="color:var(--text-muted);font-size:12px;line-height:1.6;">${escapeHtml(err.message)}<br><br>可能原因：網路問題、API 額度用完、或 AI 暫時忙線</div>
+        <button class="btn btn-gold btn-sm" onclick="generateOutfits()" style="margin-top:14px;">🔄 重試</button>
+      </div>
+    `;
+  }
+}
+
+// 渲染穿搭結果
+function renderOutfits(outfits) {
   document.getElementById('outfit-body').innerHTML = outfits.map((outfit, idx) => {
     const total = outfit.items.reduce((s, it) => s + it.price, 0);
     return `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:var(--shadow);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-          <div style="font-weight:800;color:var(--primary);font-size:15px;">${outfit.title}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:200px;">
+            <div style="font-weight:800;color:var(--primary);font-size:15px;">${escapeHtml(outfit.title)}</div>
+            ${outfit.scene ? `<div style="font-size:11px;color:var(--gold);margin-top:2px;font-weight:600;">📍 ${escapeHtml(outfit.scene)}</div>` : ''}
+          </div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <span style="font-size:13px;color:var(--text-muted);">合計</span>
+            <span style="font-size:12px;color:var(--text-muted);">合計</span>
             <span style="font-weight:800;color:var(--gold);font-size:18px;">${fmt(total)}</span>
             <button class="btn btn-gold btn-sm" onclick='addOutfitToCart(${idx})'>🛒 整套加入</button>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">
+        ${outfit.reason ? `
+          <div style="background:linear-gradient(135deg,#fffbf0,#fff);border-left:3px solid var(--gold);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:12px;color:var(--primary);line-height:1.6;">
+            💡 ${escapeHtml(outfit.reason)}
+          </div>
+        ` : ''}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
           ${outfit.items.map(it => {
             const mainImg = (it.images && it.images.length) ? it.images[0] : (it.image || '');
             return `
@@ -4666,11 +4738,6 @@ function generateOutfits() {
       </div>
     `;
   }).join('');
-
-  // 暫存當前穿搭資料以供「整套加入」使用
-  window.__currentOutfits = outfits;
-
-  openModal('outfit-modal');
 }
 
 // 整套加入購物車
