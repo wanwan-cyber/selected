@@ -1771,11 +1771,27 @@ let activeCat = '全部';
 function renderCatBar() {
   const bar = document.getElementById('cat-bar');
   const cats = getCategories();
-  // 如果有寄賣商品，在分類列加入「🏬 寄賣」
-  const hasConsign = consignItems && consignItems.length > 0;
-  let html = cats.map(c => `<button class="cat-btn ${c===activeCat?'active':''}" onclick="setCat('${c}')">${c}</button>`).join('');
+
+  // 只計算有庫存的商品（與收銀台顯示邏輯一致）
+  const inStockProducts = products.filter(p => getProductStock(p) > 0);
+
+  // 計算每個分類的件數
+  function countCat(cat) {
+    if (cat === '全部') return inStockProducts.length;
+    return inStockProducts.filter(p => p.cat === cat).length;
+  }
+
+  // 如果有寄賣商品，計算寄賣件數（同樣只算有庫存的）
+  const consignInStock = (consignItems || []).filter(it => (parseInt(it.stock) || 0) > 0);
+  const hasConsign = consignInStock.length > 0;
+
+  let html = cats.map(c => {
+    const count = countCat(c);
+    return `<button class="cat-btn ${c===activeCat?'active':''}" onclick="setCat('${c}')">${c} <span style="opacity:.7;font-size:11px;font-weight:400;">(${count})</span></button>`;
+  }).join('');
+
   if (hasConsign) {
-    html += `<button class="cat-btn ${activeCat==='__consign__'?'active':''}" onclick="setCat('__consign__')" style="background:${activeCat==='__consign__'?'var(--gold)':'rgba(201,168,76,.15)'};color:${activeCat==='__consign__'?'#fff':'var(--gold)'};border-color:var(--gold);font-weight:700;">🏬 寄賣</button>`;
+    html += `<button class="cat-btn ${activeCat==='__consign__'?'active':''}" onclick="setCat('__consign__')" style="background:${activeCat==='__consign__'?'var(--gold)':'rgba(201,168,76,.15)'};color:${activeCat==='__consign__'?'#fff':'var(--gold)'};border-color:var(--gold);font-weight:700;">🏬 寄賣 <span style="opacity:.85;font-size:11px;font-weight:400;">(${consignInStock.length})</span></button>`;
   }
   bar.innerHTML = html;
 }
@@ -2469,6 +2485,7 @@ function doCheckout() {
   showReceipt(tx, total);
   clearCart();
   renderProducts();
+  renderCatBar(); // 更新分類列件數（因為剛賣出可能讓某分類沒貨了）
 }
 
 function showReceipt(tx, total) {
@@ -4642,16 +4659,31 @@ ${productListText.join('\n')}
 【任務】
 看完所有照片，從中挑出 **3 套穿搭組合**。
 
-【穿搭規則】
-1. **必須看照片決定搭配**：注意每件衣服的真實顏色、版型、剪裁、印花、風格
-2. **顏色搭配要美**：參考小紅書熱搭技巧 — 同色系深淺、撞色少量點綴、莫蘭迪色協調、奶茶杏色系統一
-3. **風格統一**：每套要有清楚定位（甜辣 / 溫柔系 / 韓系 / 日系 / 法式 / 學院 / 度假...）
-4. **版型協調**：寬鬆配修身、長配短、有層次感
-5. **每套 2-4 件**：上+下、洋裝+配件、外套+內搭+下身 等
-6. **3 套要不同風格場合**：例如約會、街拍、上班、聚會
-7. **季節合適**：${seasonText}（${month}月）
-8. **不要重複商品**：每個 id 只能出現在一套裡
-9. **id 必須來自上方清單**（不可捏造）
+【🚨 絕對禁止規則（違反直接整套作廢）】
+1. **「套裝/兩件套」就是一整套** — 商品名稱有「套裝」「兩件套」「Set」「成套」字眼的，本身已是完整搭配（含上+下），不要再加其他上衣或下身！只能加配件（包包、項鍊、鞋、外套）。
+2. **不要兩件上衣疊穿** — 上衣 + 上衣 = NG（除非是「背心/Bra-Top + 罩衫/襯衫」這種明確內外層次，且照片真的合理）。
+3. **不要兩件下身** — 褲 + 裙、褲 + 褲、裙 + 裙 都 NG。
+4. **不要兩件洋裝** — 一套裡只能有一件洋裝。
+5. **看不出來是什麼的商品（純背景照、配件包裝）不要強行入鏡**。
+6. **照片裡模特兒已穿著完整 look（上+下都有）就視為「套裝」處理**，不要拆開單獨配。
+
+【✅ 合理的搭配公式（選一個用）】
+- **公式 A：洋裝風** — 洋裝 + 配件（包/項鍊/鞋/帽）+（可選）外套
+- **公式 B：上下身** — 上衣 + 下身（裙或褲）+（可選）配件 +（可選）外套
+- **公式 C：套裝風** — 套裝（已含上下）+ 配件 + （可選）外套
+- **公式 D：內外層次** — 內搭（背心/Bra-Top）+ 外罩（襯衫/開襟/針織）+ 下身 +（可選）配件
+
+【穿搭品質要求】
+1. **看照片決定**：注意每件衣服真實的顏色、版型、剪裁、印花、風格
+2. **顏色協調**：參考小紅書熱搭 — 同色系深淺、奶茶杏色系、莫蘭迪、撞色少量點綴
+3. **風格統一**：每套有清楚定位（甜辣 / 溫柔系 / 韓系 / 日系 / 法式 / 學院 / 度假...）
+4. **每套 2-4 件**
+5. **3 套要不同風格場合**
+6. **季節合適**：${seasonText}（${month}月）
+7. **不重複商品**：同 id 不出現在兩套
+8. **id 必須來自上方清單**
+
+⚠️ **重要：如果店內商品不夠搭出 3 套合理穿搭，寧可只回 2 套或 1 套，也不要硬湊不合理的組合！**
 
 【回傳格式】（只回 JSON，不要 \`\`\` 包裝、不要其他文字）：
 {
@@ -4660,6 +4692,7 @@ ${productListText.join('\n')}
       "title": "套組名稱（含 emoji，例：🌷 法式溫柔下午茶）",
       "scene": "適合場合",
       "style": "風格定位（甜辣/溫柔系/韓系/日系/法式...）",
+      "formula": "使用哪個公式：A/B/C/D",
       "reason": "為什麼這樣搭，描述顏色、剪裁、整體感（2-3 句，台灣女生口吻，有小紅書風格）",
       "itemIds": ["id1", "id2", "id3"]
     }
