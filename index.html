@@ -4561,68 +4561,108 @@ function getOutfitPart(p) {
   return 'other';
 }
 
-// 生成穿搭組合 — 用真的 Claude AI
+// 生成穿搭組合 — 用真的 Claude AI（看真實照片）
 async function generateOutfits() {
-  // 過濾有庫存的商品
-  const inStock = products.filter(p => getProductStock(p) > 0);
+  // 過濾有庫存且有照片的商品（AI 需要看圖才能搭得好）
+  const inStock = products.filter(p => {
+    if (getProductStock(p) <= 0) return false;
+    const hasImg = (p.images && p.images.length > 0 && p.images[0]) || p.image;
+    return hasImg;
+  });
+
   if (inStock.length < 2) {
-    document.getElementById('outfit-body').innerHTML = '<div class="empty-state"><div class="icon">👗</div><p>商品數量不夠，無法產生穿搭<br><span style="font-size:11px;color:var(--text-muted);">至少需要 2 件有庫存的商品</span></p></div>';
+    document.getElementById('outfit-body').innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📸</div>
+        <p>沒有足夠的「有照片商品」可以搭配<br>
+        <span style="font-size:11px;color:var(--text-muted);">AI 需要看真實照片才能搭得好<br>請幫商品上傳實拍照</span></p>
+      </div>
+    `;
     openModal('outfit-modal');
     return;
+  }
+
+  // AI 一次最多看 20 張圖（避免 API 太慢、太貴）
+  // 如果商品太多，隨機抽樣 20 件
+  let candidates = inStock;
+  if (candidates.length > 20) {
+    candidates = inStock.slice().sort(() => Math.random() - 0.5).slice(0, 20);
   }
 
   // 顯示載入中
   document.getElementById('outfit-body').innerHTML = `
     <div style="text-align:center;padding:50px 20px;">
       <div style="display:inline-block;width:48px;height:48px;border:4px solid var(--surface2);border-top-color:var(--gold);border-radius:50%;animation:spin 1s linear infinite;"></div>
-      <div style="margin-top:18px;color:var(--primary);font-weight:700;font-size:15px;">✨ AI 正在精心搭配中...</div>
-      <div style="margin-top:6px;color:var(--text-muted);font-size:12px;">依顏色、風格、季節挑選合適組合</div>
+      <div style="margin-top:18px;color:var(--primary);font-weight:700;font-size:15px;">✨ AI 正在看照片搭配中...</div>
+      <div style="margin-top:6px;color:var(--text-muted);font-size:12px;">分析 ${candidates.length} 件商品的顏色、剪裁、版型...</div>
+      <div style="margin-top:4px;color:var(--text-muted);font-size:11px;">這次會花 15-30 秒，請耐心等候</div>
     </div>
     <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
   `;
   openModal('outfit-modal');
 
   try {
-    // 準備傳給 AI 的商品資料（精簡）
-    const productList = inStock.map(p => ({
-      id: p.id,
-      name: p.name,
-      cat: p.cat || '未分類',
-      colors: p.colors || [],
-      sizes: p.sizes || [],
-      price: p.price,
-    }));
-
     const today = new Date();
     const month = today.getMonth() + 1;
     const seasonText = month >= 3 && month <= 5 ? '春季' : month >= 6 && month <= 8 ? '夏季' : month >= 9 && month <= 11 ? '秋季' : '冬季';
 
-    const prompt = `你是台灣女裝精品店「萬萬選 WANWAN SELECTED」的專業穿搭顧問。風格定位：**甜美 / 女性魅力**。
+    // 準備圖片陣列：每張圖標上編號和商品資訊
+    // 為了讓 AI 能對應商品，我們在文字裡列出每張圖對應的商品 id
+    const imageContents = [];
+    const productListText = [];
 
-現在是 ${seasonText}（${month}月），請幫我從以下店內現有商品中，挑出 3 套合適的穿搭組合給客人參考。
+    for (let i = 0; i < candidates.length; i++) {
+      const p = candidates[i];
+      const imgUrl = (p.images && p.images.length) ? p.images[0] : p.image;
 
-【店內商品清單】（JSON 格式，id 是商品識別碼）：
-${JSON.stringify(productList, null, 2)}
+      // 圖片轉成 AI 能讀的格式
+      const imgSource = await getImageSourceForAI(imgUrl);
+      if (!imgSource) continue;
+
+      imageContents.push({ type: 'image', source: imgSource });
+      productListText.push(`圖 ${i + 1}：id="${p.id}"，名稱「${p.name}」，分類「${p.cat || '未分類'}」，售價 $${p.price}${p.colors && p.colors.length ? '，顏色：' + p.colors.join('/') : ''}`);
+    }
+
+    if (imageContents.length < 2) {
+      throw new Error('能讀取的商品照片不足 2 張');
+    }
+
+    const prompt = `你是台灣女裝精品店「萬萬選 WANWAN SELECTED」的專業穿搭顧問。
+
+**美學參考：小紅書（RED）熱門穿搭風格**
+- 甜辣風、溫柔系、ootd 日常感
+- 韓系、日系、法式優雅
+- 顏色和諧、層次感、質感重要
+- 拍照好看、能打卡的穿搭
+
+【你眼前的商品照片】
+我會給你 ${imageContents.length} 張商品照片，依序對應以下商品：
+${productListText.join('\n')}
+
+【任務】
+看完所有照片，從中挑出 **3 套穿搭組合**。
 
 【穿搭規則】
-1. 每套必須包含 2-4 件商品（id 必須來自上方清單）
-2. 顏色要協調：粉色、米白、淺杏、奶茶、玫瑰金等甜美色系優先；避免大紅配大綠這類衝突
-3. 風格要統一：甜美、優雅、女性化、有少女感
-4. 場合多元：3 套要不同情境（例：約會、上班、休閒）
-5. 必須有合理的搭配邏輯（不要單純堆配件）
-6. 季節要符合：${seasonText}（避免冬天推薦短袖+涼鞋）
-7. 不要重複出現同一個商品 id 在不同套裡
+1. **必須看照片決定搭配**：注意每件衣服的真實顏色、版型、剪裁、印花、風格
+2. **顏色搭配要美**：參考小紅書熱搭技巧 — 同色系深淺、撞色少量點綴、莫蘭迪色協調、奶茶杏色系統一
+3. **風格統一**：每套要有清楚定位（甜辣 / 溫柔系 / 韓系 / 日系 / 法式 / 學院 / 度假...）
+4. **版型協調**：寬鬆配修身、長配短、有層次感
+5. **每套 2-4 件**：上+下、洋裝+配件、外套+內搭+下身 等
+6. **3 套要不同風格場合**：例如約會、街拍、上班、聚會
+7. **季節合適**：${seasonText}（${month}月）
+8. **不要重複商品**：每個 id 只能出現在一套裡
+9. **id 必須來自上方清單**（不可捏造）
 
-【回傳格式】（只回傳 JSON，不要其他文字、不要 markdown 包裝、不要 \`\`\` 標記）：
+【回傳格式】（只回 JSON，不要 \`\`\` 包裝、不要其他文字）：
 {
   "outfits": [
     {
-      "title": "套組名稱（含 emoji，例：🌷 春日約會風）",
-      "scene": "適合場合（例：午後約會、姐妹下午茶）",
-      "reason": "為什麼這樣搭（1-2 句話，描述顏色協調、風格優勢，台灣女生口吻）",
+      "title": "套組名稱（含 emoji，例：🌷 法式溫柔下午茶）",
+      "scene": "適合場合",
+      "style": "風格定位（甜辣/溫柔系/韓系/日系/法式...）",
+      "reason": "為什麼這樣搭，描述顏色、剪裁、整體感（2-3 句，台灣女生口吻，有小紅書風格）",
       "itemIds": ["id1", "id2", "id3"]
-    },
-    ...3 套
+    }
   ]
 }`;
 
@@ -4632,10 +4672,13 @@ ${JSON.stringify(productList, null, 2)}
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "claude-sonnet-4-5",
-        max_tokens: 2000,
+        max_tokens: 3000,
         messages: [{
           role: "user",
-          content: prompt
+          content: [
+            ...imageContents,
+            { type: 'text', text: prompt }
+          ]
         }]
       })
     });
@@ -4648,9 +4691,7 @@ ${JSON.stringify(productList, null, 2)}
     const data = await response.json();
     const rawText = data.content.filter(c => c.type === 'text').map(c => c.text).join('\n').trim();
 
-    // 嘗試解析 JSON（移除可能的 markdown 包裝）
     let cleanJson = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-    // 找到第一個 { 到最後一個 }
     const firstBrace = cleanJson.indexOf('{');
     const lastBrace = cleanJson.lastIndexOf('}');
     if (firstBrace >= 0 && lastBrace > firstBrace) {
@@ -4669,16 +4710,16 @@ ${JSON.stringify(productList, null, 2)}
       throw new Error('AI 沒有產生有效的穿搭');
     }
 
-    // 把 itemIds 轉成實際商品物件
     const outfits = aiResult.outfits.map(o => {
-      const items = (o.itemIds || []).map(id => inStock.find(p => p.id === id)).filter(Boolean);
+      const items = (o.itemIds || []).map(id => candidates.find(p => p.id === id)).filter(Boolean);
       return {
         title: o.title || '✨ 穿搭推薦',
         scene: o.scene || '',
+        style: o.style || '',
         reason: o.reason || '',
         items,
       };
-    }).filter(o => o.items.length >= 2); // 至少要有 2 件
+    }).filter(o => o.items.length >= 2);
 
     if (outfits.length === 0) {
       throw new Error('AI 選的商品 id 對不上');
@@ -4693,11 +4734,39 @@ ${JSON.stringify(productList, null, 2)}
       <div style="text-align:center;padding:30px 20px;">
         <div style="font-size:42px;margin-bottom:10px;">😔</div>
         <div style="color:var(--danger);font-weight:700;margin-bottom:8px;">AI 穿搭推薦失敗</div>
-        <div style="color:var(--text-muted);font-size:12px;line-height:1.6;">${escapeHtml(err.message)}<br><br>可能原因：網路問題、API 額度用完、或 AI 暫時忙線</div>
+        <div style="color:var(--text-muted);font-size:12px;line-height:1.6;">${escapeHtml(err.message)}<br><br>可能原因：網路、API 額度、或照片格式問題</div>
         <button class="btn btn-gold btn-sm" onclick="generateOutfits()" style="margin-top:14px;">🔄 重試</button>
       </div>
     `;
   }
+}
+
+// 把商品照片轉成 AI 能讀的格式
+async function getImageSourceForAI(imgUrl) {
+  if (!imgUrl) return null;
+
+  // 如果已經是 base64
+  if (imgUrl.startsWith('data:')) {
+    const m = imgUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+    if (m) {
+      return {
+        type: 'base64',
+        media_type: m[1],
+        data: m[2],
+      };
+    }
+    return null;
+  }
+
+  // 如果是網址（Cloudinary 等）→ 用 URL 直接給 AI
+  if (imgUrl.startsWith('http://') || imgUrl.startsWith('https://')) {
+    return {
+      type: 'url',
+      url: imgUrl,
+    };
+  }
+
+  return null;
 }
 
 // 渲染穿搭結果
@@ -4709,7 +4778,10 @@ function renderOutfits(outfits) {
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
           <div style="flex:1;min-width:200px;">
             <div style="font-weight:800;color:var(--primary);font-size:15px;">${escapeHtml(outfit.title)}</div>
-            ${outfit.scene ? `<div style="font-size:11px;color:var(--gold);margin-top:2px;font-weight:600;">📍 ${escapeHtml(outfit.scene)}</div>` : ''}
+            <div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;">
+              ${outfit.style ? `<span style="background:linear-gradient(135deg,var(--gold),#d9bb6a);color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">#${escapeHtml(outfit.style)}</span>` : ''}
+              ${outfit.scene ? `<span style="font-size:11px;color:var(--gold);font-weight:600;">📍 ${escapeHtml(outfit.scene)}</span>` : ''}
+            </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <span style="font-size:12px;color:var(--text-muted);">合計</span>
@@ -4727,7 +4799,7 @@ function renderOutfits(outfits) {
             const mainImg = (it.images && it.images.length) ? it.images[0] : (it.image || '');
             return `
               <div onclick="closeModal('outfit-modal');selectProduct('${it.id}')" style="background:var(--bg);border-radius:8px;padding:8px;cursor:pointer;border:1px solid transparent;transition:all .15s;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='transparent'">
-                ${mainImg ? `<div style="height:120px;background:url('${mainImg.replace(/'/g, "\\'")}') center/cover;border-radius:6px;margin-bottom:6px;"></div>` : '<div style="height:120px;background:linear-gradient(135deg,var(--surface2),#fff);border-radius:6px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;font-size:32px;">👗</div>'}
+                ${mainImg ? `<div style="height:140px;background:url('${mainImg.replace(/'/g, "\\'")}') center/cover;border-radius:6px;margin-bottom:6px;"></div>` : '<div style="height:140px;background:linear-gradient(135deg,var(--surface2),#fff);border-radius:6px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;font-size:32px;">👗</div>'}
                 <div style="font-size:12px;color:var(--primary);font-weight:600;line-height:1.3;">${escapeHtml(it.name)}</div>
                 <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${escapeHtml(it.cat || '')}</div>
                 <div style="font-weight:800;color:var(--gold);font-size:14px;margin-top:4px;">${fmt(it.price)}</div>
