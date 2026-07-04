@@ -1615,6 +1615,11 @@ function load(key, def) {
 function save(key, val) {
   try {
     localStorage.setItem(key, JSON.stringify(val));
+    // 自動觸發雲端同步（僅限 POS 主要資料，且非下載中）
+    const syncKeys = ['pos_products', 'pos_members', 'pos_coupons', 'pos_transactions', 'pos_held_orders', 'pos_consign_vendors', 'pos_consign_items'];
+    if (syncKeys.includes(key) && typeof markChanged === 'function' && !window.__isDownloadingSync) {
+      try { markChanged(); } catch(e) {}
+    }
     return true;
   } catch (err) {
     if (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.message.includes('quota')) {
@@ -3623,6 +3628,8 @@ async function syncUpload() {
         coupons: coupons,
         transactions: transactions,
         heldOrders: heldOrders,
+        consignVendors: consignVendors,
+        consignItems: consignItems,
       }
     };
     // 注意：Apps Script 接受 text/plain 避免預檢 OPTIONS
@@ -3650,6 +3657,7 @@ async function syncDownload(showToast = false) {
   if (syncState.uploadTimer) return; // 有未上傳的變更，跳過下拉避免覆蓋
   if (syncState.status === 'uploading') return;
   updateSyncStatus('downloading');
+  window.__isDownloadingSync = true; // 標記：現在是下載中，save 別觸發 markChanged
   try {
     const response = await fetch(appSettings.syncUrl + '?action=fetch&t=' + Date.now(), {
       method: 'GET',
@@ -3698,6 +3706,20 @@ async function syncDownload(showToast = false) {
         changed = true;
       }
     }
+    if (data.consignVendors && Array.isArray(data.consignVendors)) {
+      if (JSON.stringify(data.consignVendors) !== JSON.stringify(consignVendors)) {
+        consignVendors = data.consignVendors;
+        save('pos_consign_vendors', consignVendors);
+        changed = true;
+      }
+    }
+    if (data.consignItems && Array.isArray(data.consignItems)) {
+      if (JSON.stringify(data.consignItems) !== JSON.stringify(consignItems)) {
+        consignItems = data.consignItems;
+        save('pos_consign_items', consignItems);
+        changed = true;
+      }
+    }
 
     syncState.lastSyncAt = new Date();
     syncState.lastError = '';
@@ -3708,6 +3730,10 @@ async function syncDownload(showToast = false) {
       renderCatBar(); renderProducts(); renderProductsTable();
       renderMemberCards(); populateMemberSelect();
       renderCoupons(); renderHoldBar(); calcTotals();
+      // 寄賣頁如果在檢視中也重繪
+      if (typeof renderConsign === 'function') {
+        try { renderConsign(); } catch(e) {}
+      }
       if (showToast) toast('☁ 已同步雲端資料', 'success');
     } else if (showToast) {
       toast('資料已是最新', 'success');
@@ -3717,6 +3743,8 @@ async function syncDownload(showToast = false) {
     syncState.lastError = err.message;
     updateSyncStatus('error');
     if (showToast) toast('同步失敗：' + err.message, 'error');
+  } finally {
+    window.__isDownloadingSync = false; // 清掉下載中標記
   }
 }
 
