@@ -30,9 +30,21 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'PingFang TC','Microsoft JhengHei',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  /* iPad / iOS 安全區域：避開瀏海、狀態列、home indicator */
+  #app {
+    display: flex;
+    height: 100vh;
+    height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow: hidden;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    background: var(--primary); /* 讓 padding 區域是深綠色，跟側邊欄一致 */
+    box-sizing: border-box;
+  }
 
   /* ── App Shell ── */
-  #app { display: flex; height: 100vh; overflow: hidden; }
 
   /* ── Sidebar Nav ── */
   .sidebar { width: 72px; background: var(--primary); display: flex; flex-direction: column; align-items: center; padding: 0; flex-shrink: 0; z-index: 10; }
@@ -280,7 +292,7 @@
   /* ══════════════════════════════
      MODAL
   ══════════════════════════════ */
-  .modal-overlay { position: fixed; inset: 0; background: rgba(20,30,25,0.55); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(2px); }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(20,30,25,0.55); z-index: 1000; display: none; align-items: center; justify-content: center; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); backdrop-filter: blur(2px); box-sizing: border-box; }
   .modal-overlay.open { display: flex; animation: fadeIn .15s; }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .modal { background: var(--surface); border-radius: 14px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); animation: slideUp .2s; }
@@ -928,8 +940,30 @@
         </div>
         <div class="stat-cards" id="stat-cards"></div>
         <div class="report-section">
-          <h4>📅 近 7 日銷售趨勢</h4>
-          <div class="bar-chart" id="sales-bar"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+            <h4 style="margin:0;">📊 銷售趨勢分析</h4>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <select id="trend-range" onchange="renderTrend()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;cursor:pointer;">
+                <option value="today">今天</option>
+                <option value="yesterday">昨天</option>
+                <option value="7days" selected>近 7 日</option>
+                <option value="week">本週</option>
+                <option value="lastweek">上週</option>
+                <option value="month">本月</option>
+                <option value="30days">近 30 日</option>
+              </select>
+              <select id="trend-metric" onchange="renderTrend()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;cursor:pointer;">
+                <option value="sales" selected>💰 銷售額</option>
+                <option value="profit">📈 淨利</option>
+                <option value="qty">👕 件數</option>
+                <option value="orders">📋 訂單數</option>
+                <option value="avg">💵 客單價</option>
+                <option value="consign">🏬 寄賣銷售</option>
+                <option value="normal">🛍 一般商品銷售</option>
+              </select>
+            </div>
+          </div>
+          <div id="trend-container"></div>
         </div>
         <div class="report-section">
           <h4>🏆 暢銷商品 Top 5</h4>
@@ -1676,7 +1710,7 @@ function openModal(id) { document.getElementById(id).classList.add('open'); }
 function toast(msg, type='success') {
   const t = document.createElement('div');
   t.textContent = msg;
-  t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:600;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:${type==='error'?'#c0392b':type==='warn'?'#e67e22':'#1a2e25'};animation:fadeInUp .3s;`;
+  t.style.cssText = `position:fixed;bottom:calc(24px + env(safe-area-inset-bottom));right:calc(24px + env(safe-area-inset-right));z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:600;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.2);background:${type==='error'?'#c0392b':type==='warn'?'#e67e22':'#1a2e25'};animation:fadeInUp .3s;`;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
 }
@@ -2429,6 +2463,7 @@ function doCheckout() {
         if (!item.sales) item.sales = [];
         item.sales.push({
           date: new Date().toLocaleDateString('zh-TW') + ' ' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }),
+          dateIso: new Date().toISOString(),
           qty: ci.qty,
         });
       }
@@ -2462,6 +2497,7 @@ function doCheckout() {
   const tx = {
     id: uid(),
     date: now.toLocaleDateString('zh-TW') + ' ' + now.toLocaleTimeString('zh-TW', { hour:'2-digit', minute:'2-digit' }),
+    dateIso: now.toISOString(), // 跨裝置一致的日期格式（給報表統計用）
     memberId: selectedMember?.id || '',
     memberName: selectedMember?.name || '非會員',
     items: cart.map(i => {
@@ -4599,11 +4635,54 @@ async function generateOutfits() {
     return;
   }
 
-  // AI 一次最多看 20 張圖（避免 API 太慢、太貴）
-  // 如果商品太多，隨機抽樣 20 件
+  // AI 一次最多看 50 張圖
+  // 智慧抽樣：優先確保各部位都有充足選擇（避免 50 件都是上衣）
   let candidates = inStock;
-  if (candidates.length > 20) {
-    candidates = inStock.slice().sort(() => Math.random() - 0.5).slice(0, 20);
+  const MAX_IMAGES = 50;
+
+  if (candidates.length > MAX_IMAGES) {
+    // 用簡單關鍵字判斷部位
+    const partOf = (p) => {
+      const t = ((p.cat || '') + ' ' + (p.name || '')).toLowerCase();
+      if (/套裝|兩件套|set/i.test(t)) return 'set';
+      if (/洋裝|連身|dress/i.test(t)) return 'dress';
+      if (/外套|夾克|大衣|風衣|罩衫|外罩|針織外|jacket|coat/i.test(t)) return 'outer';
+      if (/包|項鍊|耳環|手鍊|帽|圍巾|絲巾|腰帶|手錶|墨鏡|配件|襪/i.test(t)) return 'accessory';
+      if (/鞋|靴|拖鞋|涼鞋|高跟|shoes/i.test(t)) return 'shoes';
+      if (/褲|裙|short|pants|skirt|九分|寬褲|長褲|短褲|牛仔/i.test(t)) return 'bottom';
+      return 'top'; // 默認為上衣
+    };
+
+    // 分組
+    const groups = {};
+    candidates.forEach(p => {
+      const part = partOf(p);
+      if (!groups[part]) groups[part] = [];
+      groups[part].push(p);
+    });
+
+    // 每組隨機洗牌
+    Object.keys(groups).forEach(k => {
+      groups[k] = groups[k].sort(() => Math.random() - 0.5);
+    });
+
+    // 配額：盡量讓每個部位都有出現
+    const quotas = { top: 12, bottom: 8, dress: 6, set: 5, outer: 5, accessory: 8, shoes: 6 };
+    const picked = [];
+    Object.keys(quotas).forEach(part => {
+      const arr = groups[part] || [];
+      picked.push(...arr.slice(0, quotas[part]));
+    });
+
+    // 不足 MAX 的話，從剩餘商品補
+    const pickedIds = new Set(picked.map(p => p.id));
+    const remaining = candidates.filter(p => !pickedIds.has(p.id)).sort(() => Math.random() - 0.5);
+    while (picked.length < MAX_IMAGES && remaining.length > 0) {
+      picked.push(remaining.shift());
+    }
+
+    // 砍到 MAX
+    candidates = picked.slice(0, MAX_IMAGES);
   }
 
   // 顯示載入中
@@ -4683,7 +4762,12 @@ ${productListText.join('\n')}
 7. **不重複商品**：同 id 不出現在兩套
 8. **id 必須來自上方清單**
 
-⚠️ **重要：如果店內商品不夠搭出 3 套合理穿搭，寧可只回 2 套或 1 套，也不要硬湊不合理的組合！**
+⚠️ **重要：寧缺勿濫！**
+- 如果店內商品搭不出 3 套合理的，就只回 1-2 套
+- 顏色不協調的（藍配灰、橘配粉等突兀組合）寧可不推薦
+- 風格不合的（甜美套裝配中性外罩）寧可不推薦
+- **真的搭不出來時，可以只推薦 1 套你最有把握的**
+- **甚至可以回空陣列（outfits: []），然後在 noOutfitReason 欄位說明原因**（例如「店內缺乏可搭配的下身」、「顏色都太接近沒有層次」）
 
 【回傳格式】（只回 JSON，不要 \`\`\` 包裝、不要其他文字）：
 {
@@ -4696,7 +4780,8 @@ ${productListText.join('\n')}
       "reason": "為什麼這樣搭，描述顏色、剪裁、整體感（2-3 句，台灣女生口吻，有小紅書風格）",
       "itemIds": ["id1", "id2", "id3"]
     }
-  ]
+  ],
+  "noOutfitReason": "如果 outfits 是空或少於 3 套，這裡說明原因（沒事填空字串）"
 }`;
 
     const proxyUrl = 'https://pos-ai.n2abc5210.workers.dev';
@@ -4740,7 +4825,19 @@ ${productListText.join('\n')}
     }
 
     if (!aiResult.outfits || !Array.isArray(aiResult.outfits) || aiResult.outfits.length === 0) {
-      throw new Error('AI 沒有產生有效的穿搭');
+      // AI 說搭不出來
+      const reason = aiResult.noOutfitReason || '店內商品無法組成合理穿搭';
+      document.getElementById('outfit-body').innerHTML = `
+        <div style="text-align:center;padding:40px 20px;">
+          <div style="font-size:48px;margin-bottom:14px;">🤔</div>
+          <div style="color:var(--primary);font-weight:700;font-size:15px;margin-bottom:8px;">AI 表示這次搭不太出來</div>
+          <div style="background:linear-gradient(135deg,#fffbf0,#fff);border-left:3px solid var(--gold);padding:12px 16px;border-radius:6px;text-align:left;max-width:480px;margin:14px auto;color:var(--primary);font-size:13px;line-height:1.7;">
+            💬 ${escapeHtml(reason)}
+          </div>
+          <button class="btn btn-gold btn-sm" onclick="generateOutfits()" style="margin-top:14px;">🔄 換一批看看</button>
+        </div>
+      `;
+      return;
     }
 
     const outfits = aiResult.outfits.map(o => {
@@ -4922,10 +5019,15 @@ function renderConsign() {
     if (paid) collectedRent += paid.amount;
     else if (v.rent > 0) unpaidVendors++;
   });
-  // 本月寄賣銷售
+  // 本月寄賣銷售（用 Date 物件比對，跨裝置一致）
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
   const monthSales = consignItems.reduce((sum, it) => {
-    return sum + (it.sales || []).filter(s => s.date.startsWith(ym.replace('-', '/')))
-      .reduce((s, sale) => s + sale.qty * it.price, 0);
+    return sum + (it.sales || []).filter(s => {
+      const d = parseTxDate(s.dateIso || s.date);
+      return d && d >= monthStart;
+    }).reduce((s, sale) => s + sale.qty * it.price, 0);
   }, 0);
 
   document.getElementById('consign-stats').innerHTML = `
@@ -5998,11 +6100,316 @@ function getTxProfit(t) {
   return t.total - cogs;
 }
 
+// ======================== TREND ANALYSIS (趨勢分析) ========================
+
+// 解析交易日期字串 → Date 物件
+// 支援多種格式，避免跨裝置不相容問題
+function parseTxDate(txOrDateStr) {
+  // 支援直接傳 transaction 物件（優先用 dateIso）
+  if (typeof txOrDateStr === 'object' && txOrDateStr !== null) {
+    if (txOrDateStr.dateIso) {
+      const d = new Date(txOrDateStr.dateIso);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return parseTxDate(txOrDateStr.date);
+  }
+
+  const dateStr = txOrDateStr;
+  if (!dateStr) return null;
+
+  // 1. 嘗試直接用 Date 解析（處理 ISO 格式和其他標準格式）
+  const direct = new Date(dateStr);
+  if (!isNaN(direct.getTime()) && direct.getFullYear() > 2000) return direct;
+
+  // 2. 中文格式：「2026/6/24 下午 2:30」「2026/6/24 上午 10:15」「2026/6/24 14:30」
+  // 移除中文的「上午」「下午」，轉換 12 小時 → 24 小時
+  let s = String(dateStr).trim();
+  let isPM = false, isAM = false;
+  if (s.includes('下午') || /\bPM\b/i.test(s)) isPM = true;
+  if (s.includes('上午') || /\bAM\b/i.test(s)) isAM = true;
+  s = s.replace(/[上下]午|AM|PM/gi, '').trim();
+
+  // 3. 分開日期跟時間
+  const parts = s.split(/\s+/);
+  const datePart = parts[0];
+  const timePart = parts[1] || '00:00';
+
+  // 4. 解析日期部分：支援 / 或 - 或 年月日
+  let year, month, day;
+  const dateMatch = datePart.match(/(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/);
+  if (dateMatch) {
+    year = +dateMatch[1];
+    month = +dateMatch[2] - 1;
+    day = +dateMatch[3];
+  } else {
+    // 也試試 M/D/YYYY 或 D/M/YYYY 之類
+    const alt = datePart.split(/[\/\-]/).map(Number);
+    if (alt.length >= 3) {
+      if (alt[0] > 1900) { // YYYY/M/D
+        year = alt[0]; month = alt[1] - 1; day = alt[2];
+      } else if (alt[2] > 1900) { // M/D/YYYY 或 D/M/YYYY
+        year = alt[2]; month = alt[0] - 1; day = alt[1];
+      } else return null;
+    } else return null;
+  }
+
+  // 5. 解析時間
+  const timeMatch = timePart.match(/(\d{1,2}):(\d{2})/);
+  let hour = timeMatch ? +timeMatch[1] : 0;
+  const minute = timeMatch ? +timeMatch[2] : 0;
+
+  // 12 小時制轉 24 小時制
+  if (isPM && hour < 12) hour += 12;
+  if (isAM && hour === 12) hour = 0;
+
+  const result = new Date(year, month, day, hour, minute);
+  return isNaN(result.getTime()) ? null : result;
+}
+
+// 依日期範圍選項回傳日期陣列
+function getDateRange(rangeType) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dates = [];
+
+  const addDay = (offset) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + offset);
+    return d;
+  };
+
+  if (rangeType === 'today') {
+    dates.push(today);
+  } else if (rangeType === 'yesterday') {
+    dates.push(addDay(-1));
+  } else if (rangeType === '7days') {
+    for (let i = 6; i >= 0; i--) dates.push(addDay(-i));
+  } else if (rangeType === 'week') {
+    // 本週：週一到今天
+    const dow = today.getDay() || 7; // 週日=7
+    for (let i = dow - 1; i >= 0; i--) dates.push(addDay(-i));
+  } else if (rangeType === 'lastweek') {
+    // 上週：上週一到上週日
+    const dow = today.getDay() || 7;
+    for (let i = 0; i < 7; i++) dates.push(addDay(-dow - 6 + i));
+  } else if (rangeType === 'month') {
+    // 本月：1號到今天
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+      dates.push(new Date(d));
+    }
+  } else if (rangeType === '30days') {
+    for (let i = 29; i >= 0; i--) dates.push(addDay(-i));
+  }
+  return dates;
+}
+
+// 計算某一天的統計數據
+function computeDayStats(day) {
+  const next = new Date(day);
+  next.setDate(next.getDate() + 1);
+  const dayTxs = transactions.filter(t => {
+    const d = parseTxDate(t); // 傳整個 tx 物件，優先用 dateIso
+    return d && d >= day && d < next;
+  });
+
+  const sales = dayTxs.reduce((s, t) => s + (t.total || 0), 0);
+  const profit = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => {
+    // 寄賣不計入利潤（賣的錢是寄賣商的）
+    if (i.isConsign || i.consignItemId) return s;
+    return s + (i.price - (i.cost || 0)) * i.qty;
+  }, 0), 0);
+  const qty = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
+  const orders = dayTxs.length;
+  const avg = orders ? Math.round(sales / orders) : 0;
+
+  // 寄賣銷售
+  const consignSales = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => {
+    if (i.isConsign || i.consignItemId) return s + i.price * i.qty;
+    return s;
+  }, 0), 0);
+  // 一般商品銷售
+  const normalSales = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => {
+    if (i.isConsign || i.consignItemId) return s;
+    return s + i.price * i.qty;
+  }, 0), 0);
+
+  return { sales, profit, qty, orders, avg, consign: consignSales, normal: normalSales };
+}
+
+// 主要渲染函式：依選項渲染趨勢
+function renderTrend() {
+  const rangeType = document.getElementById('trend-range').value;
+  const metricType = document.getElementById('trend-metric').value;
+
+  const metricConfig = {
+    sales:   { label: '銷售額', unit: '$', format: v => fmt(v), color: 'var(--gold)', emoji: '💰' },
+    profit:  { label: '淨利',   unit: '$', format: v => fmt(v), color: '#4caf50', emoji: '📈' },
+    qty:     { label: '件數',   unit: '件', format: v => v + ' 件', color: 'var(--primary)', emoji: '👕' },
+    orders:  { label: '訂單數', unit: '筆', format: v => v + ' 筆', color: '#3498db', emoji: '📋' },
+    avg:     { label: '客單價', unit: '$', format: v => fmt(v), color: '#9b59b6', emoji: '💵' },
+    consign: { label: '寄賣銷售', unit: '$', format: v => fmt(v), color: 'var(--gold)', emoji: '🏬' },
+    normal:  { label: '一般商品銷售', unit: '$', format: v => fmt(v), color: 'var(--primary)', emoji: '🛍' },
+  };
+  const cfg = metricConfig[metricType];
+
+  const dates = getDateRange(rangeType);
+  const days = dates.map(d => {
+    const stats = computeDayStats(d);
+    // 對比：上週同日
+    const lastWeek = new Date(d);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    const lastStats = computeDayStats(lastWeek);
+    return {
+      date: d,
+      label: (d.getMonth() + 1) + '/' + d.getDate(),
+      weekday: ['日','一','二','三','四','五','六'][d.getDay()],
+      isToday: d.getTime() === new Date().setHours(0,0,0,0),
+      value: stats[metricType] || 0,
+      lastValue: lastStats[metricType] || 0,
+      stats,
+    };
+  });
+
+  // 總計 & 平均
+  const totalVal = days.reduce((s, d) => s + d.value, 0);
+  const daysWithData = days.filter(d => d.value > 0);
+  const avgVal = daysWithData.length ? Math.round(totalVal / daysWithData.length) : 0;
+  const maxVal = Math.max(...days.map(d => d.value), 1);
+
+  // 對比上週總計
+  const lastTotal = days.reduce((s, d) => s + d.lastValue, 0);
+  const changePct = lastTotal > 0 ? Math.round((totalVal - lastTotal) / lastTotal * 100) : null;
+
+  // 最佳日 / 最低日
+  const bestDay = days.reduce((a, b) => b.value > a.value ? b : a, days[0]);
+  const activeDays = days.filter(d => d.value > 0);
+  const worstDay = activeDays.length > 1 ? activeDays.reduce((a, b) => b.value < a.value ? b : a) : null;
+
+  // 決定顯示模式：≤7 日用垂直長條，>7 日用簡化橫條
+  const useVerticalBars = dates.length <= 10;
+
+  document.getElementById('trend-container').innerHTML = `
+    <!-- 頂部統計 3 卡 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
+      <div style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:8px;padding:12px;text-align:center;color:#fff;">
+        <div style="font-size:10px;opacity:.7;letter-spacing:1px;">${cfg.emoji} 總${cfg.label}</div>
+        <div style="font-size:20px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums;margin-top:2px;">${cfg.format(totalVal)}</div>
+        ${changePct !== null ? `
+          <div style="font-size:10px;margin-top:2px;color:${changePct >= 0 ? '#a5e18b' : '#ffb1b1'};">
+            ${changePct >= 0 ? '▲' : '▼'} vs 上週同期 ${Math.abs(changePct)}%
+          </div>
+        ` : `<div style="font-size:10px;opacity:.6;margin-top:2px;">上週同期無資料</div>`}
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">📊 日均</div>
+        <div style="font-size:20px;font-weight:900;color:var(--primary);font-variant-numeric:tabular-nums;margin-top:2px;">${cfg.format(avgVal)}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">有交易 ${daysWithData.length}/${dates.length} 日</div>
+      </div>
+      <div style="background:${bestDay.value > 0 ? 'linear-gradient(135deg,#fffbf0,#fff)' : 'var(--bg)'};border:1px solid ${bestDay.value > 0 ? 'var(--gold)' : 'var(--border)'};border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">🏆 最高日</div>
+        <div style="font-size:20px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums;margin-top:2px;">${bestDay.value > 0 ? cfg.format(bestDay.value) : '—'}</div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${bestDay.value > 0 ? `${bestDay.label} 週${bestDay.weekday}` : '尚無資料'}</div>
+      </div>
+    </div>
+
+    ${useVerticalBars ? renderVerticalBars(days, maxVal, cfg) : renderHorizontalRows(days, maxVal, cfg)}
+
+    ${totalVal > 0 ? `
+      <div style="margin-top:14px;padding:12px 16px;background:linear-gradient(135deg,#fffbf0,#fff);border-left:3px solid var(--gold);border-radius:6px;font-size:12px;color:var(--primary);line-height:1.7;">
+        💡 <strong>洞察</strong>：
+        ${bestDay.value > 0 ? `${cfg.label}最佳日是 <strong>${bestDay.label}（週${bestDay.weekday}）</strong> 達 <strong style="color:var(--gold);">${cfg.format(bestDay.value)}</strong>` : ''}
+        ${worstDay ? `；最低是 ${worstDay.label}（${cfg.format(worstDay.value)}）` : ''}
+        ${changePct !== null ? `。比上週同期${changePct >= 0 ? '增加' : '減少'} <strong style="color:${changePct >= 0 ? 'var(--success)' : 'var(--danger)'};">${Math.abs(changePct)}%</strong>` : ''}
+      </div>
+    ` : `
+      <div style="margin-top:14px;padding:14px;background:var(--bg);border-radius:8px;text-align:center;color:var(--text-muted);font-size:12px;">
+        此期間尚無${cfg.label}資料
+      </div>
+    `}
+  `;
+}
+
+// 垂直長條圖（適合日期少的情況）
+function renderVerticalBars(days, maxVal, cfg) {
+  const barWidth = Math.max(30, Math.floor(280 / days.length));
+  return `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px 12px 12px;">
+      <div style="display:flex;align-items:flex-end;justify-content:space-around;height:160px;gap:4px;padding:0 4px 12px;border-bottom:1px solid var(--border);">
+        ${days.map(d => {
+          const heightPct = d.value > 0 ? (d.value / maxVal * 100) : 0;
+          const lastHeightPct = d.lastValue > 0 ? (d.lastValue / maxVal * 100) : 0;
+          const isBest = d.value > 0 && d.value === Math.max(...days.map(x => x.value));
+          return `
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;min-width:0;" title="${d.label} 週${d.weekday}: ${cfg.format(d.value)}${d.lastValue > 0 ? ' (上週 ' + cfg.format(d.lastValue) + ')' : ''}">
+              ${d.value > 0 ? `<div style="font-size:9px;color:${isBest ? cfg.color : 'var(--text-muted)'};font-weight:700;margin-bottom:2px;white-space:nowrap;">${cfg.format(d.value).replace('$', '')}</div>` : ''}
+              <div style="width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:100%;">
+                <!-- 上週同日（淡灰對比） -->
+                ${d.lastValue > 0 ? `<div style="width:40%;height:${lastHeightPct}%;background:linear-gradient(180deg,#d0d0d0,#e5e5e5);border-radius:3px 3px 0 0;opacity:.6;" title="上週同日 ${cfg.format(d.lastValue)}"></div>` : ''}
+                <!-- 本日長條 -->
+                ${d.value > 0 ? `<div style="width:${d.lastValue > 0 ? '40%' : '70%'};height:${heightPct}%;background:linear-gradient(180deg,${cfg.color},${isBest ? 'var(--gold-light)' : cfg.color});border-radius:4px 4px 0 0;box-shadow:0 -2px 6px rgba(201,168,76,.2);position:relative;">
+                  ${isBest ? '<div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:12px;">🏆</div>' : ''}
+                  ${d.isToday ? '<div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);color:#fff;font-size:8px;font-weight:700;">今</div>' : ''}
+                </div>` : `<div style="width:70%;height:2px;background:var(--border);border-radius:2px;"></div>`}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-around;gap:4px;margin-top:8px;padding:0 4px;">
+        ${days.map(d => `
+          <div style="flex:1;text-align:center;min-width:0;">
+            <div style="font-size:11px;color:var(--primary);font-weight:${d.isToday ? '800' : '600'};${d.isToday ? 'color:var(--gold);' : ''}">${d.label}</div>
+            <div style="font-size:9px;color:var(--text-muted);">週${d.weekday}${d.isToday ? '·今' : ''}</div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex;gap:16px;justify-content:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:10px;color:var(--text-muted);">
+        <span><span style="display:inline-block;width:10px;height:10px;background:${cfg.color};border-radius:2px;vertical-align:middle;margin-right:4px;"></span>本期</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#d0d0d0;border-radius:2px;vertical-align:middle;margin-right:4px;opacity:.6;"></span>上週同日</span>
+      </div>
+    </div>
+  `;
+}
+
+// 水平列表（適合 30 天等長期間）
+function renderHorizontalRows(days, maxVal, cfg) {
+  return `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px;max-height:400px;overflow-y:auto;">
+      ${days.map(d => {
+        const pct = d.value > 0 ? (d.value / maxVal * 100) : 0;
+        const diff = d.value - d.lastValue;
+        const diffPct = d.lastValue > 0 ? Math.round(diff / d.lastValue * 100) : null;
+        return `
+          <div style="display:grid;grid-template-columns:60px 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--surface2);${d.isToday ? 'background:linear-gradient(90deg,rgba(201,168,76,.08),transparent);' : ''}">
+            <div>
+              <div style="font-size:11px;color:var(--primary);font-weight:${d.isToday ? '800' : '600'};${d.isToday ? 'color:var(--gold);' : ''}">${d.label}</div>
+              <div style="font-size:9px;color:var(--text-muted);">週${d.weekday}${d.isToday ? '·今' : ''}</div>
+            </div>
+            <div style="height:22px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative;">
+              ${d.value > 0 ? `<div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${cfg.color},var(--gold-light));border-radius:4px;display:flex;align-items:center;padding:0 8px;"><span style="color:#fff;font-size:10px;font-weight:700;">${cfg.format(d.value)}</span></div>` : '<span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--text-muted);font-size:10px;">無交易</span>'}
+            </div>
+            <div style="font-size:10px;text-align:right;min-width:60px;">
+              ${diffPct !== null ? `<span style="color:${diff >= 0 ? 'var(--success)' : 'var(--danger)'};">${diff >= 0 ? '▲' : '▼'} ${Math.abs(diffPct)}%</span>` : '<span style="color:var(--text-muted);">—</span>'}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderReport() {
   const total = transactions.reduce((s, t) => s + t.total, 0);
   const totalProfit = transactions.reduce((s, t) => s + getTxProfit(t), 0);
-  const today = new Date().toLocaleDateString('zh-TW');
-  const todayTxs = transactions.filter(t => t.date.startsWith(today.replace(/\//g, '/')));
+
+  // 今日：用 Date 比對，跨裝置一致
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const todayTxs = transactions.filter(t => {
+    const d = parseTxDate(t);
+    return d && d >= todayStart && d < tomorrowStart;
+  });
   const todayTotal = todayTxs.reduce((s, t) => s + t.total, 0);
   const todayProfit = todayTxs.reduce((s, t) => s + getTxProfit(t), 0);
   const todayQty = todayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
@@ -6014,18 +6421,18 @@ function renderReport() {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthTxs = transactions.filter(t => {
-    const parts = (t.date || '').split(' ')[0].split('/').map(Number);
-    if (parts.length < 3) return false;
-    const d = new Date(parts[0], parts[1] - 1, parts[2]);
-    return d >= monthStart;
+    const d = parseTxDate(t);
+    return d && d >= monthStart;
   });
   const monthTotal = monthTxs.reduce((s, t) => s + t.total, 0);
   const monthProfit = monthTxs.reduce((s, t) => s + getTxProfit(t), 0);
 
   // 昨日比較
-  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toLocaleDateString('zh-TW');
-  const yesterdayTxs = transactions.filter(t => t.date.startsWith(yesterdayStr.replace(/\//g, '/')));
+  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const yesterdayTxs = transactions.filter(t => {
+    const d = parseTxDate(t);
+    return d && d >= yesterdayStart && d < todayStart;
+  });
   const yesterdayTotal = yesterdayTxs.reduce((s, t) => s + t.total, 0);
   const dodChange = yesterdayTotal > 0 ? Math.round((todayTotal - yesterdayTotal) / yesterdayTotal * 100) : null;
 
@@ -6082,101 +6489,9 @@ function renderReport() {
     </div>
   `;
 
-  // 近 7 日銷售趨勢（從真實 transactions 算出）
-  const days = [];
-  let weekTotalSales = 0;
-  let weekTotalOrders = 0;
-  let weekTotalQty = 0;
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    d.setHours(0, 0, 0, 0);
-    const next = new Date(d);
-    next.setDate(next.getDate() + 1);
-    const label = (d.getMonth() + 1) + '/' + d.getDate();
-    const weekday = ['日','一','二','三','四','五','六'][d.getDay()];
-    // 過濾當日交易
-    const dayTxs = transactions.filter(t => {
-      // t.date 格式："2026/6/23 13:45"
-      const parts = (t.date || '').split(' ')[0].split('/').map(Number);
-      if (parts.length < 3) return false;
-      const txDate = new Date(parts[0], parts[1] - 1, parts[2]);
-      return txDate >= d && txDate < next;
-    });
-    const sales = dayTxs.reduce((s, t) => s + (t.total || 0), 0);
-    const profit = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + (i.price - (i.cost || 0)) * i.qty, 0), 0);
-    const qty = dayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
-    const orders = dayTxs.length;
-    const avg = orders ? Math.round(sales / orders) : 0;
-    const isToday = i === 0;
-    days.push({ label, weekday, sales, profit, qty, orders, avg, isToday });
-    weekTotalSales += sales;
-    weekTotalOrders += orders;
-    weekTotalQty += qty;
-  }
-  const maxDay = Math.max(...days.map(d => d.sales), 1);
-  const weekAvg = Math.round(weekTotalSales / 7);
+  // 呼叫可切換的趨勢分析（使用者可切換日期範圍與指標）
+  renderTrend();
 
-  // 找出最高與最低日
-  const bestDay = days.reduce((a, b) => b.sales > a.sales ? b : a, days[0]);
-  const worstActiveDays = days.filter(d => d.sales > 0);
-  const worstDay = worstActiveDays.length ? worstActiveDays.reduce((a, b) => b.sales < a.sales ? b : a) : null;
-
-  document.getElementById('sales-bar').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px;">
-      <div style="background:linear-gradient(135deg,var(--primary),var(--primary-light));border-radius:8px;padding:10px;text-align:center;color:#fff;">
-        <div style="font-size:10px;opacity:.7;letter-spacing:1px;">本週銷售</div>
-        <div style="font-size:18px;font-weight:900;color:var(--gold);font-variant-numeric:tabular-nums;margin-top:2px;">${fmt(weekTotalSales)}</div>
-        <div style="font-size:10px;opacity:.6;">日均 ${fmt(weekAvg)}</div>
-      </div>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">
-        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">本週訂單</div>
-        <div style="font-size:18px;font-weight:900;color:var(--primary);font-variant-numeric:tabular-nums;margin-top:2px;">${weekTotalOrders}</div>
-        <div style="font-size:10px;color:var(--text-muted);">${weekTotalQty} 件商品</div>
-      </div>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;">
-        <div style="font-size:10px;color:var(--text-muted);letter-spacing:1px;">平均客單</div>
-        <div style="font-size:18px;font-weight:900;color:var(--primary);font-variant-numeric:tabular-nums;margin-top:2px;">${weekTotalOrders ? fmt(Math.round(weekTotalSales / weekTotalOrders)) : '$0'}</div>
-        <div style="font-size:10px;color:var(--text-muted);">每筆均額</div>
-      </div>
-    </div>
-    <div class="trend-chart">
-      ${days.map(d => {
-        const pct = d.sales > 0 ? (d.sales / maxDay * 100) : 0;
-        const isBest = d.sales > 0 && d.sales === bestDay.sales && weekTotalSales > 0;
-        return `
-          <div class="trend-row ${d.isToday ? 'trend-today' : ''}">
-            <div class="trend-label">
-              <div class="trend-date">${d.label}</div>
-              <div class="trend-weekday">週${d.weekday}${d.isToday ? ' · 今日' : ''}</div>
-            </div>
-            <div class="trend-track">
-              <div class="trend-fill ${isBest ? 'best' : ''}" style="width:${pct}%;">
-                ${d.sales > 0 ? `<span class="trend-val">${fmt(d.sales)}${isBest ? ' 🏆' : ''}</span>` : ''}
-              </div>
-              ${d.sales === 0 ? '<span class="trend-empty">無交易</span>' : ''}
-            </div>
-            <div class="trend-meta">
-              ${d.orders > 0 ? `
-                <span class="trend-orders" title="訂單數">📋 ${d.orders}</span>
-                <span class="trend-qty" title="件數">👕 ${d.qty}</span>
-                <span class="trend-avg" title="客單價">💰 ${fmt(d.avg)}</span>
-              ` : '<span style="color:var(--text-muted);font-size:10px;">—</span>'}
-            </div>
-          </div>
-        `;
-      }).join('')}
-    </div>
-    ${weekTotalSales > 0 ? `
-      <div style="margin-top:14px;padding:10px 14px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;font-size:12px;color:var(--primary);line-height:1.7;">
-        💡 <strong>本週洞察</strong>：銷售最佳日是 <strong>${bestDay.label}（週${bestDay.weekday}）</strong>，達 <strong style="color:var(--gold);">${fmt(bestDay.sales)}</strong>${worstDay && worstDay.label !== bestDay.label ? `；最低是 ${worstDay.label}（${fmt(worstDay.sales)}）` : ''}。
-      </div>
-    ` : `
-      <div style="margin-top:14px;padding:14px;background:var(--bg);border-radius:8px;text-align:center;color:var(--text-muted);font-size:12px;">
-        近 7 日尚無交易紀錄
-      </div>
-    `}
-  `;
 
   // Top products
   const pMap = {};
