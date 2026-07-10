@@ -763,8 +763,10 @@
       <div class="page-content">
         <div class="page-header">
           <div class="page-title"><span class="title-bar"></span>👗 商品管理</div>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-outline" onclick="openBatchModal()">📦 批次新增</button>
+            <button class="btn btn-outline" onclick="bulkOnlineShop(true)" title="將所有商品標記為官網上架" style="border-color:var(--gold);color:var(--gold);">🛒 全部上架</button>
+            <button class="btn btn-outline" onclick="bulkOnlineShop(false)" title="將所有商品從官網下架">☐ 全部下架</button>
             <button class="btn btn-primary" onclick="openProductModal()">＋ 新增商品</button>
           </div>
         </div>
@@ -1085,6 +1087,17 @@
         <div>
           <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">🔗 商品連結（IG 貼文、官網等）</label>
           <input type="text" id="pm-link" placeholder="https://instagram.com/p/..." style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;">
+        </div>
+      </div>
+      <!-- 上架官網開關 -->
+      <div class="form-group" style="padding:12px 14px;background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-radius:8px;border:1px solid var(--gold-light);">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:var(--primary);font-weight:700;margin:0;">
+          <input type="checkbox" id="pm-online-shop" style="width:20px;height:20px;cursor:pointer;accent-color:var(--gold);flex-shrink:0;">
+          <span>🛒 上架到官網</span>
+        </label>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;margin-left:30px;line-height:1.5;">
+          勾選後，此商品會出現在官網商品列表，客戶可下單購買。<br>
+          <span style="color:var(--gold);">💡 提示：確認照片、售價都準備好再打勾。</span>
         </div>
       </div>
       <div class="form-group"><label>備註</label><textarea id="pm-note" rows="2" style="resize:vertical;"></textarea></div>
@@ -2584,6 +2597,11 @@ function renderProductsTable() {
       <td>
         <strong style="color:var(--primary);">${p.name}</strong>
         ${p.link ? `<a href="${p.link}" target="_blank" rel="noopener" style="margin-left:6px;text-decoration:none;color:var(--gold);font-size:13px;" title="${p.link}" onclick="event.stopPropagation()">🔗</a>` : ''}
+        <button
+          onclick="event.stopPropagation();toggleProductOnlineShop('${p.id}')"
+          title="點擊切換官網上架狀態"
+          style="display:inline-block;margin-left:6px;padding:2px 8px;font-size:10px;border-radius:9px;font-weight:700;vertical-align:middle;letter-spacing:.3px;cursor:pointer;transition:all .15s;border:${p.onlineShop ? '1px solid var(--gold)' : '1px dashed var(--border)'};background:${p.onlineShop ? 'var(--gold)' : 'transparent'};color:${p.onlineShop ? '#fff' : 'var(--text-muted)'};box-shadow:${p.onlineShop ? '0 1px 3px rgba(201,168,76,.3)' : 'none'};"
+        >${p.onlineShop ? '🛒 已上架' : '☐ 未上架'}</button>
         ${p.note ? '<br><span style="font-size:11px;color:var(--text-muted);">'+p.note+'</span>' : ''}
       </td>
       <td><span style="font-family:monospace;font-size:12px;color:var(--primary);font-weight:600;">${p.sku || '—'}</span></td>
@@ -2775,6 +2793,8 @@ function openProductModal(id) {
   document.getElementById('pm-cost').value = p?.cost || '';
   document.getElementById('pm-note').value = p?.note || '';
   document.getElementById('pm-link').value = p?.link || '';
+  // 上架官網開關：舊資料 undefined → 預設 false（不上架）
+  document.getElementById('pm-online-shop').checked = p?.onlineShop === true;
   // 載入照片陣列（相容舊資料：若 images 不存在但 image 存在則轉一張）
   if (p?.images && Array.isArray(p.images)) {
     pmImages = [...p.images];
@@ -2856,6 +2876,7 @@ function saveProductSilent() {
     image: pmImages[0] || '',
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
+    onlineShop: document.getElementById('pm-online-shop').checked,
   };
   const idx = products.findIndex(x => x.id === editProductId);
   if (idx >= 0) {
@@ -3142,6 +3163,7 @@ function saveProduct() {
     image: pmImages[0] || '', // 主圖向後相容
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
+    onlineShop: document.getElementById('pm-online-shop').checked,
   };
   if (editProductId) {
     const idx = products.findIndex(x => x.id === editProductId);
@@ -3160,6 +3182,37 @@ function deleteProduct(id) {
   save('pos_products', products);
   renderProductsTable(); renderProducts(); renderCatBar();
   toast('商品已刪除', 'warn');
+}
+
+// 從商品管理列表直接切換上架官網狀態
+function toggleProductOnlineShop(id) {
+  const idx = products.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const newState = !products[idx].onlineShop;
+  products[idx].onlineShop = newState;
+  save('pos_products', products);
+  renderProductsTable(); renderProducts();
+  toast(newState ? `「${products[idx].name}」已上架官網 🛒` : `「${products[idx].name}」已下架`, newState ? 'success' : 'warn');
+}
+
+// 批量上架/下架所有商品
+function bulkOnlineShop(state) {
+  const total = products.length;
+  if (total === 0) { toast('目前沒有商品', 'warn'); return; }
+  const changed = products.filter(p => (p.onlineShop === true) !== state).length;
+  if (changed === 0) {
+    toast(state ? '所有商品都已經在官網上架中' : '所有商品都已經下架', 'warn');
+    return;
+  }
+  const action = state ? '上架' : '下架';
+  const msg = state
+    ? `確定將全部 ${total} 件商品上架到官網嗎？\n（${changed} 件會被改變狀態）`
+    : `確定將全部 ${total} 件商品從官網下架嗎？\n（${changed} 件會被改變狀態）`;
+  if (!confirm(msg)) return;
+  products.forEach(p => { p.onlineShop = state; });
+  save('pos_products', products);
+  renderProductsTable(); renderProducts();
+  toast(state ? `已上架 ${changed} 件商品到官網 🛒` : `已下架 ${changed} 件商品`, 'success');
 }
 
 // 商品照片狀態（陣列，多張）
