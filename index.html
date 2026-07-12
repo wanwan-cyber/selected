@@ -605,6 +605,225 @@
     .pay-methods { gap: 3px; }
     .sidebar-nav button .nav-label { font-size: 9px; }
   }
+
+  /* ============================================================
+     ★ M5 線上訂單管理頁樣式
+     ============================================================ */
+  .oo-tab {
+    padding: 8px 14px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all .18s;
+    letter-spacing: 0.3px;
+  }
+  .oo-tab:hover { background: rgba(201,168,76,0.08); color: var(--primary); }
+  .oo-tab.active { background: var(--primary); color: var(--gold); }
+  .oo-tab .oo-tab-count {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 6px;
+    font-size: 11px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 8px;
+    min-width: 18px;
+    text-align: center;
+    font-weight: 700;
+  }
+  .oo-tab:not(.active) .oo-tab-count { background: rgba(0,0,0,0.06); }
+
+  .oo-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  @media (min-width: 720px) {
+    .oo-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  }
+  @media (min-width: 1280px) {
+    .oo-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  .oo-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all .2s;
+  }
+  .oo-card:hover { box-shadow: 0 4px 14px rgba(26,46,37,0.08); border-color: rgba(201,168,76,0.4); }
+
+  .oo-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: linear-gradient(135deg, rgba(201,168,76,0.05), rgba(201,168,76,0.02));
+    border-bottom: 1px solid var(--border);
+  }
+  .oo-order-no {
+    font-family: "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary);
+    letter-spacing: 0.5px;
+    cursor: pointer;
+  }
+  .oo-order-no:hover { color: var(--gold); }
+  .oo-status-badge {
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #fff;
+  }
+  .oo-status-unpaid    { background: #E8A54B; }
+  .oo-status-paid      { background: #4A90E2; }
+  .oo-status-shipped   { background: #9B6FBA; }
+  .oo-status-completed { background: #5A7A5A; }
+  .oo-status-cancelled { background: #999; }
+
+  .oo-card-body {
+    padding: 12px 14px;
+  }
+  .oo-customer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--border);
+    margin-bottom: 10px;
+  }
+  .oo-customer-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+  }
+  .oo-member-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    margin-left: 4px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .oo-member-badge.new { background: rgba(201,168,76,0.15); color: var(--gold-dark); border: 1px solid var(--gold); }
+  .oo-member-badge.exist { background: rgba(74,144,226,0.1); color: #4A90E2; border: 1px solid rgba(74,144,226,0.3); }
+
+  .oo-customer-phone {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: "Menlo", monospace;
+  }
+
+  .oo-meta {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+  .oo-meta strong { color: var(--primary); font-weight: 600; }
+
+  .oo-items {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--text);
+    max-height: 90px;
+    overflow-y: auto;
+  }
+  .oo-item-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+  }
+  .oo-item-row + .oo-item-row { border-top: 1px dashed rgba(0,0,0,0.05); }
+  .oo-item-name { flex: 1; margin-right: 8px; }
+  .oo-item-price { font-family: "Menlo", monospace; font-weight: 600; color: var(--primary); }
+
+  .oo-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 8px 0 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .oo-total-label { font-size: 11px; color: var(--text-muted); letter-spacing: 1px; }
+  .oo-total-amount {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--gold-dark);
+    font-family: "Menlo", monospace;
+  }
+  .oo-total-amount .curr { font-size: 12px; opacity: 0.7; margin-right: 2px; }
+
+  .oo-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .oo-action-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+    min-width: 90px;
+    transition: all .15s;
+  }
+  .oo-action-primary {
+    background: var(--primary);
+    color: var(--gold);
+  }
+  .oo-action-primary:hover { background: #2a4a3a; }
+  .oo-action-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .oo-action-secondary:hover { background: var(--border); }
+  .oo-action-warn {
+    background: transparent;
+    color: #c66;
+    border: 1px solid rgba(200,100,100,0.3);
+  }
+  .oo-action-warn:hover { background: rgba(200,100,100,0.08); }
+
+  .oo-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .oo-empty .oo-empty-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+
+  .oo-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: right;
+    margin-top: 8px;
+    font-style: italic;
+  }
 </style>
 </head>
 <body>
@@ -621,6 +840,10 @@
       </button>
       <button data-page="members" onclick="showPage('members', this)">
         <span class="nav-icon">👤</span><span class="nav-label">會員</span>
+      </button>
+      <button data-page="orders-online" onclick="showPage('orders-online', this)" style="position:relative;">
+        <span class="nav-icon">📮</span><span class="nav-label">線上單</span>
+        <span id="onlineOrdersBadge" style="position:absolute;top:8px;right:8px;background:var(--gold);color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;padding:0 4px;border-radius:8px;display:none;align-items:center;justify-content:center;letter-spacing:0;"></span>
       </button>
       <button data-page="coupons" onclick="showPage('coupons', this)">
         <span class="nav-icon">🎟</span><span class="nav-label">優惠</span>
@@ -930,6 +1153,39 @@
 
         <!-- 寄賣商列表 + 商品 -->
         <div id="consign-list"></div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         ★ M5 線上訂單管理頁
+         ============================================================ -->
+    <div class="page" id="orders-online-page">
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title"><span class="title-bar"></span>📮 線上訂單</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" onclick="loadOnlineOrders(true)" id="oo-refresh-btn">🔄 重新整理</button>
+          </div>
+        </div>
+
+        <!-- 篩選 tab -->
+        <div id="oo-filter-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:6px;background:var(--surface2);border-radius:10px;overflow-x:auto;">
+          <!-- JS 動態產生 -->
+        </div>
+
+        <!-- 搜尋 -->
+        <div style="margin-bottom:14px;position:relative;">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:14px;">🔍</span>
+          <input type="text" id="oo-search" placeholder="搜尋訂單編號、客戶名或電話..." oninput="renderOnlineOrders()" style="width:100%;padding:9px 12px 9px 36px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;">
+        </div>
+
+        <!-- 訂單卡片區 -->
+        <div id="oo-content">
+          <div style="text-align:center;padding:60px 20px;color:var(--text-muted);font-size:13px;">
+            <div style="font-size:36px;margin-bottom:12px;opacity:0.4;">📮</div>
+            點「🔄 重新整理」載入官網訂單
+          </div>
+        </div>
       </div>
     </div>
 
@@ -6940,6 +7196,321 @@ renderHoldBar();
 if (appSettings.syncEnabled && appSettings.syncUrl) {
   setTimeout(() => startSync(), 800);
 }
+
+// ============================================================
+// ★ M5 線上訂單管理
+// ============================================================
+let onlineOrders = [];
+let ooCurrentFilter = 'all';
+const OO_STATUS_LABELS = {
+  unpaid: '待付款',
+  paid: '已付款',
+  shipped: '已出貨',
+  completed: '已完成',
+  cancelled: '已取消',
+};
+const OO_STATUS_ORDER = ['unpaid', 'paid', 'shipped', 'completed'];
+
+async function loadOnlineOrders(manual) {
+  const btn = document.getElementById('oo-refresh-btn');
+  const content = document.getElementById('oo-content');
+  const url = appSettings.syncUrl;
+  if (!url) {
+    content.innerHTML = '<div class="oo-empty"><div class="oo-empty-icon">⚙</div>尚未設定 Google Apps Script 網址<br><span style="font-size:11px;">請至「設定」設定同步網址後再試</span></div>';
+    return;
+  }
+  if (btn) btn.disabled = true;
+  content.innerHTML = '<div class="oo-empty"><div class="oo-empty-icon">⏳</div>載入中...</div>';
+  try {
+    const res = await fetch(url + '?action=getOnlineOrders&_t=' + Date.now());
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error(data.error || '載入失敗');
+    // Parse items 欄位（可能是 JSON 字串）
+    onlineOrders = (data.orders || []).map(o => {
+      if (typeof o.items === 'string') {
+        try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
+      }
+      return o;
+    });
+    // 依時間反排（新的在前）
+    onlineOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    // 自動匯入會員
+    const importedCount = autoImportMembersFromOrders(onlineOrders);
+    renderOnlineOrders();
+    updateOnlineOrdersBadge();
+    if (manual) {
+      let msg = `已載入 ${onlineOrders.length} 筆訂單`;
+      if (importedCount > 0) msg += `，並自動建立 ${importedCount} 位新會員 ✨`;
+      toast(msg, 'success');
+    }
+  } catch (err) {
+    console.error(err);
+    content.innerHTML = `<div class="oo-empty"><div class="oo-empty-icon">⚠️</div>載入失敗：${escapeHtmlOO(err.message)}<br><span style="font-size:11px;margin-top:6px;display:inline-block;">請檢查 Apps Script 是否已更新到 v2.4</span></div>`;
+    if (manual) toast('載入訂單失敗：' + err.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// 自動匯入新客戶為會員（電話當識別碼）
+function autoImportMembersFromOrders(orders) {
+  let importedCount = 0;
+  orders.forEach(o => {
+    if (!o.phone || !o.name) return;
+    // 電話已存在會員中 → 跳過
+    if (members.some(m => m.phone === o.phone)) return;
+    // 建立新會員
+    const newMember = {
+      id: (typeof uid === 'function') ? uid() : ('m_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
+      name: o.name,
+      phone: o.phone,
+      barcode: '',
+      birthday: o.birthday || '',
+      points: 0,
+      totalSpent: 0,
+      note: `來自官網訂單 ${o.orderNo || ''}`,
+    };
+    members.push(newMember);
+    importedCount++;
+  });
+  if (importedCount > 0) {
+    save('pos_members', members);
+    if (typeof renderMemberCards === 'function') renderMemberCards();
+    if (typeof populateMemberSelect === 'function') populateMemberSelect();
+  }
+  return importedCount;
+}
+
+function updateOnlineOrdersBadge() {
+  const badge = document.getElementById('onlineOrdersBadge');
+  if (!badge) return;
+  const pendingCount = onlineOrders.filter(o => o.status === 'unpaid' || o.status === 'paid').length;
+  if (pendingCount > 0) {
+    badge.textContent = pendingCount;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function getFilteredOrders() {
+  let list = onlineOrders.slice();
+  if (ooCurrentFilter !== 'all') {
+    list = list.filter(o => (o.status || 'unpaid') === ooCurrentFilter);
+  }
+  const q = (document.getElementById('oo-search')?.value || '').trim().toLowerCase();
+  if (q) {
+    list = list.filter(o =>
+      (o.orderNo || '').toLowerCase().includes(q) ||
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.phone || '').toLowerCase().includes(q)
+    );
+  }
+  return list;
+}
+
+function renderOnlineOrders() {
+  // 篩選 tabs
+  const tabs = document.getElementById('oo-filter-tabs');
+  const counts = { all: onlineOrders.length };
+  OO_STATUS_ORDER.forEach(s => { counts[s] = onlineOrders.filter(o => (o.status || 'unpaid') === s).length; });
+  tabs.innerHTML = `
+    <button class="oo-tab ${ooCurrentFilter === 'all' ? 'active' : ''}" onclick="setOoFilter('all')">全部 <span class="oo-tab-count">${counts.all}</span></button>
+    ${OO_STATUS_ORDER.map(s => `
+      <button class="oo-tab ${ooCurrentFilter === s ? 'active' : ''}" onclick="setOoFilter('${s}')">${OO_STATUS_LABELS[s]} <span class="oo-tab-count">${counts[s]}</span></button>
+    `).join('')}
+  `;
+
+  // 訂單卡片
+  const content = document.getElementById('oo-content');
+  const list = getFilteredOrders();
+  if (list.length === 0) {
+    content.innerHTML = `<div class="oo-empty"><div class="oo-empty-icon">📮</div>${onlineOrders.length === 0 ? '目前沒有官網訂單' : '沒有符合條件的訂單'}</div>`;
+    return;
+  }
+  content.innerHTML = `<div class="oo-grid">${list.map(renderOrderCard).join('')}</div>`;
+}
+
+function renderOrderCard(o) {
+  const status = o.status || 'unpaid';
+  const statusLabel = OO_STATUS_LABELS[status] || status;
+  const nextStatus = getNextStatus(status);
+  const isNewMember = !members.some(m => m.phone === o.phone && m.note && !m.note.includes(o.orderNo));
+  const memberBadge = members.some(m => m.phone === o.phone)
+    ? '<span class="oo-member-badge exist">會員</span>'
+    : '';
+  const timeAgo = getTimeAgo(o.createdAt);
+
+  // 商品清單
+  const items = Array.isArray(o.items) ? o.items : [];
+  const itemsHtml = items.slice(0, 6).map(i =>
+    `<div class="oo-item-row">
+      <span class="oo-item-name">${escapeHtmlOO(i.name || '')} × ${i.qty || 1}<br><span style="font-size:10px;color:var(--text-muted);">${escapeHtmlOO(i.color || '')}/${escapeHtmlOO(i.size || '')}</span></span>
+      <span class="oo-item-price">$${((i.price || 0) * (i.qty || 1)).toLocaleString()}</span>
+    </div>`
+  ).join('') + (items.length > 6 ? `<div class="oo-item-row" style="justify-content:center;color:var(--text-muted);font-size:11px;">…等 ${items.length} 件</div>` : '');
+
+  // 配送資訊
+  let shippingInfo = escapeHtmlOO(o.shippingLabel || '');
+  if (o.shippingMethod === 'convenience_store') {
+    if (o.cvsStoreCode || o.cvsStoreName) {
+      shippingInfo += `<br><strong>${escapeHtmlOO(o.cvsBrand || '')} ${escapeHtmlOO(o.cvsStoreCode || '')} ${escapeHtmlOO(o.cvsStoreName || '')}</strong>`;
+    } else {
+      shippingInfo += `<br><span style="color:#E8A54B;font-weight:700;">⚠️ 客戶未填店號店名</span>`;
+    }
+  } else if (o.shippingMethod === 'post_office') {
+    if (o.address) shippingInfo += `<br><strong>${escapeHtmlOO(o.postalCode || '')} ${escapeHtmlOO(o.address || '')}</strong>`;
+  }
+
+  return `
+    <div class="oo-card">
+      <div class="oo-card-header">
+        <div class="oo-order-no" onclick="copyText('${escapeHtmlOO(o.orderNo || '')}')" title="點擊複製">${escapeHtmlOO(o.orderNo || '')}</div>
+        <div class="oo-status-badge oo-status-${status}">${statusLabel}</div>
+      </div>
+      <div class="oo-card-body">
+        <div class="oo-customer">
+          <div>
+            <span class="oo-customer-name">${escapeHtmlOO(o.name || '')}</span>${memberBadge}
+            <div class="oo-customer-phone">${escapeHtmlOO(o.phone || '')}</div>
+          </div>
+          ${o.birthday ? `<div style="font-size:11px;color:var(--text-muted);">🎂 ${escapeHtmlOO(o.birthday)}</div>` : ''}
+        </div>
+        <div class="oo-meta">
+          <strong>配送：</strong><div>${shippingInfo}</div>
+          ${o.note ? `<strong>備註：</strong><div>${escapeHtmlOO(o.note)}</div>` : ''}
+        </div>
+        <div class="oo-items">${itemsHtml || '<span style="color:var(--text-muted);">無商品</span>'}</div>
+        <div class="oo-total">
+          <div>
+            <span class="oo-total-label">應收</span>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(o.subtotal || 0).toLocaleString()}${o.shippingFee ? ` + 運費 $${o.shippingFee}` : ''}${o.freeShippingApplied ? ' (免運)' : ''}</div>
+          </div>
+          <div class="oo-total-amount"><span class="curr">$</span>${(o.total || 0).toLocaleString()}</div>
+        </div>
+        <div class="oo-actions">
+          ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
+          <button class="oo-action-btn oo-action-secondary" onclick="showOrderDetail('${escapeAttrOO(o.orderNo)}')">詳情</button>
+          ${status !== 'cancelled' && status !== 'completed' ? `<button class="oo-action-btn oo-action-warn" onclick="cancelOrder('${escapeAttrOO(o.orderNo)}')">取消</button>` : ''}
+        </div>
+        <div class="oo-time">${escapeHtmlOO(o.createdAtLocal || o.createdAt || '')}${timeAgo ? ' · ' + timeAgo : ''}</div>
+      </div>
+    </div>
+  `;
+}
+
+function setOoFilter(f) {
+  ooCurrentFilter = f;
+  renderOnlineOrders();
+}
+
+function getNextStatus(current) {
+  const idx = OO_STATUS_ORDER.indexOf(current);
+  if (idx < 0 || idx >= OO_STATUS_ORDER.length - 1) return null;
+  return OO_STATUS_ORDER[idx + 1];
+}
+
+async function advanceOrderStatus(orderNo) {
+  const order = onlineOrders.find(o => o.orderNo === orderNo);
+  if (!order) return;
+  const next = getNextStatus(order.status || 'unpaid');
+  if (!next) return;
+  if (!confirm(`確定將訂單 ${orderNo} 標記為「${OO_STATUS_LABELS[next]}」？`)) return;
+  await updateOrderStatusRemote(orderNo, next);
+}
+
+async function cancelOrder(orderNo) {
+  if (!confirm(`確定取消訂單 ${orderNo}？此動作無法還原`)) return;
+  await updateOrderStatusRemote(orderNo, 'cancelled');
+}
+
+async function updateOrderStatusRemote(orderNo, newStatus) {
+  const url = appSettings.syncUrl;
+  if (!url) { toast('尚未設定同步網址', 'error'); return; }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'updateOrderStatus', orderNo, status: newStatus }),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '更新失敗');
+    // 更新本地
+    const order = onlineOrders.find(o => o.orderNo === orderNo);
+    if (order) order.status = newStatus;
+    renderOnlineOrders();
+    updateOnlineOrdersBadge();
+    toast(`訂單 ${orderNo} 已更新為「${OO_STATUS_LABELS[newStatus]}」`, 'success');
+  } catch (err) {
+    console.error(err);
+    toast('更新失敗：' + err.message, 'error');
+  }
+}
+
+function showOrderDetail(orderNo) {
+  const o = onlineOrders.find(x => x.orderNo === orderNo);
+  if (!o) return;
+  const items = Array.isArray(o.items) ? o.items : [];
+  const itemsText = items.map(i => `  ${i.name} (${i.color || ''}/${i.size || ''}) × ${i.qty} = $${(i.price * i.qty).toLocaleString()}`).join('\n');
+  alert(
+    `訂單 ${o.orderNo}\n` +
+    `狀態：${OO_STATUS_LABELS[o.status] || o.status}\n\n` +
+    `客戶：${o.name}\n電話：${o.phone}\n${o.birthday ? '生日：' + o.birthday + '\n' : ''}\n` +
+    `配送：${o.shippingLabel}\n${o.shippingMethod === 'convenience_store' ? `${o.cvsBrand || ''} ${o.cvsStoreCode || '(未填店號)'} ${o.cvsStoreName || '(未填店名)'}\n` : ''}${o.address ? o.postalCode + ' ' + o.address + '\n' : ''}\n` +
+    `商品：\n${itemsText}\n\n` +
+    `小計：$${(o.subtotal || 0).toLocaleString()}\n運費：$${o.shippingFee || 0}${o.freeShippingApplied ? ' (免運)' : ''}\n總計：$${(o.total || 0).toLocaleString()}\n\n` +
+    `${o.note ? '備註：' + o.note + '\n' : ''}` +
+    `時間：${o.createdAtLocal || o.createdAt || ''}`
+  );
+}
+
+function getTimeAgo(iso) {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const diff = Date.now() - t;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '剛剛';
+  if (mins < 60) return mins + ' 分鐘前';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + ' 小時前';
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return days + ' 天前';
+  return '';
+}
+
+function copyText(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => toast('已複製：' + text, 'success'));
+  } else {
+    const tmp = document.createElement('input');
+    tmp.value = text; document.body.appendChild(tmp); tmp.select();
+    document.execCommand('copy'); document.body.removeChild(tmp);
+    toast('已複製：' + text, 'success');
+  }
+}
+
+function escapeHtmlOO(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+function escapeAttrOO(s) { return escapeHtmlOO(s).replace(/'/g, '&#39;'); }
+
+// 進入「線上訂單」頁時自動載入
+(function() {
+  const origShowPage = window.showPage;
+  if (typeof origShowPage === 'function') {
+    window.showPage = function(page, btn) {
+      const r = origShowPage.apply(this, arguments);
+      if (page === 'orders-online') {
+        // 進頁面若還沒載過就自動載
+        if (onlineOrders.length === 0) loadOnlineOrders(false);
+        else renderOnlineOrders();
+      }
+      return r;
+    };
+  }
+})();
+
 </script>
 </body>
 </html>
