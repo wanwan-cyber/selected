@@ -7202,6 +7202,8 @@ if (appSettings.syncEnabled && appSettings.syncUrl) {
 // ============================================================
 let onlineOrders = [];
 let ooCurrentFilter = 'all';
+let currentChatOrderNo = null;
+let currentChatMessages = [];
 const OO_STATUS_LABELS = {
   unpaid: '待付款',
   paid: '已付款',
@@ -7373,6 +7375,7 @@ function renderOrderCard(o) {
           <div>
             <span class="oo-customer-name">${escapeHtmlOO(o.name || '')}</span>${memberBadge}
             <div class="oo-customer-phone">${escapeHtmlOO(o.phone || '')}</div>
+            ${o.lineId ? `<div style="font-size:11px;color:#00B900;font-weight:600;margin-top:2px;">💬 LINE：${escapeHtmlOO(o.lineId)}</div>` : ''}
           </div>
           ${o.birthday ? `<div style="font-size:11px;color:var(--text-muted);">🎂 ${escapeHtmlOO(o.birthday)}</div>` : ''}
         </div>
@@ -7390,6 +7393,7 @@ function renderOrderCard(o) {
         </div>
         <div class="oo-actions">
           ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
+          <button class="oo-action-btn oo-action-secondary" onclick="openOrderChat('${escapeAttrOO(o.orderNo)}')">💬 對話</button>
           <button class="oo-action-btn oo-action-secondary" onclick="showOrderDetail('${escapeAttrOO(o.orderNo)}')">詳情</button>
           ${status !== 'cancelled' && status !== 'completed' ? `<button class="oo-action-btn oo-action-warn" onclick="cancelOrder('${escapeAttrOO(o.orderNo)}')">取消</button>` : ''}
         </div>
@@ -7455,13 +7459,118 @@ function showOrderDetail(orderNo) {
   alert(
     `訂單 ${o.orderNo}\n` +
     `狀態：${OO_STATUS_LABELS[o.status] || o.status}\n\n` +
-    `客戶：${o.name}\n電話：${o.phone}\n${o.birthday ? '生日：' + o.birthday + '\n' : ''}\n` +
+    `客戶：${o.name}\n電話：${o.phone}\n${o.birthday ? '生日：' + o.birthday + '\n' : ''}${o.lineId ? 'LINE ID：' + o.lineId + '\n' : ''}\n` +
     `配送：${o.shippingLabel}\n${o.shippingMethod === 'convenience_store' ? `${o.cvsBrand || ''} ${o.cvsStoreCode || '(未填店號)'} ${o.cvsStoreName || '(未填店名)'}\n` : ''}${o.address ? o.postalCode + ' ' + o.address + '\n' : ''}\n` +
     `商品：\n${itemsText}\n\n` +
     `小計：$${(o.subtotal || 0).toLocaleString()}\n運費：$${o.shippingFee || 0}${o.freeShippingApplied ? ' (免運)' : ''}\n總計：$${(o.total || 0).toLocaleString()}\n\n` +
     `${o.note ? '備註：' + o.note + '\n' : ''}` +
     `時間：${o.createdAtLocal || o.createdAt || ''}`
   );
+}
+
+// ============================================================
+// ★ 訂單對話功能（POS 端）
+// ============================================================
+async function openOrderChat(orderNo) {
+  currentChatOrderNo = orderNo;
+  const modal = document.getElementById('chatModal');
+  const orderNoEl = document.getElementById('chatModalOrderNo');
+  const messagesEl = document.getElementById('chatModalMessages');
+  const input = document.getElementById('chatModalInput');
+  if (orderNoEl) orderNoEl.textContent = orderNo;
+  if (messagesEl) messagesEl.innerHTML = '<div style="text-align:center;color:#999;font-size:12px;padding:40px 20px;">載入中...</div>';
+  if (input) input.value = '';
+  modal.style.display = 'flex';
+  await loadStaffChatMessages();
+  setTimeout(() => input && input.focus(), 100);
+}
+
+function closeOrderChat() {
+  const modal = document.getElementById('chatModal');
+  if (modal) modal.style.display = 'none';
+  currentChatOrderNo = null;
+  currentChatMessages = [];
+}
+
+async function loadStaffChatMessages() {
+  if (!currentChatOrderNo) return;
+  const url = appSettings.syncUrl;
+  if (!url) { toast('尚未設定同步網址', 'error'); return; }
+  try {
+    const res = await fetch(`${url}?action=getOrderMessages&orderNo=${encodeURIComponent(currentChatOrderNo)}&_t=${Date.now()}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '載入訊息失敗');
+    currentChatMessages = data.messages || [];
+    renderStaffChatMessages();
+  } catch (err) {
+    console.error(err);
+    const el = document.getElementById('chatModalMessages');
+    if (el) el.innerHTML = `<div style="text-align:center;color:#c66;font-size:12px;padding:40px 20px;">載入失敗：${escapeHtmlOO(err.message)}</div>`;
+  }
+}
+
+function renderStaffChatMessages() {
+  const el = document.getElementById('chatModalMessages');
+  if (!el) return;
+  if (currentChatMessages.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#999;font-size:12px;padding:40px 20px;line-height:1.7;">還沒有對話<br><span style="font-size:11px;">這裡送出訊息，客戶會在訂單成功頁看到</span></div>';
+    return;
+  }
+  el.innerHTML = currentChatMessages.map(m => {
+    const isStaff = m.sender === 'staff';
+    const time = m.timestampLocal || (m.timestamp ? new Date(m.timestamp).toLocaleString('zh-TW') : '');
+    const align = isStaff ? 'flex-end' : 'flex-start';
+    const bubbleBg = isStaff ? 'var(--primary)' : '#fff';
+    const bubbleColor = isStaff ? 'var(--gold)' : 'var(--text)';
+    const bubbleBorder = isStaff ? 'none' : '1px solid #e0d9cd';
+    const radius = isStaff ? 'border-bottom-right-radius:4px;' : 'border-bottom-left-radius:4px;';
+    return `
+      <div style="display:flex;justify-content:${align};margin:8px 4px;">
+        <div style="max-width:78%;display:flex;flex-direction:column;align-items:${align === 'flex-end' ? 'flex-end' : 'flex-start'};">
+          <div style="font-size:10px;color:#999;margin-bottom:2px;padding:0 6px;">${escapeHtmlOO(m.senderName || (isStaff ? '老闆' : '客戶'))}</div>
+          <div style="padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.5;background:${bubbleBg};color:${bubbleColor};border:${bubbleBorder};${radius};word-wrap:break-word;white-space:pre-wrap;">${escapeHtmlOO(m.content || '')}</div>
+          <div style="font-size:10px;color:#999;margin-top:3px;padding:0 6px;">${escapeHtmlOO(time)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendStaffMessage() {
+  if (!currentChatOrderNo) return;
+  const url = appSettings.syncUrl;
+  if (!url) { toast('尚未設定同步網址', 'error'); return; }
+  const input = document.getElementById('chatModalInput');
+  const content = input.value.trim();
+  if (!content) return;
+  const btn = document.getElementById('chatModalSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '送出中...'; }
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'addOrderMessage',
+        message: {
+          orderNo: currentChatOrderNo,
+          sender: 'staff',
+          senderName: 'WanWan Selected',
+          content: content,
+        },
+      }),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '送出失敗');
+    input.value = '';
+    await loadStaffChatMessages();
+    toast('訊息已送出 ✓', 'success');
+  } catch (err) {
+    console.error(err);
+    toast('送出失敗：' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '送出'; }
+  }
 }
 
 function getTimeAgo(iso) {
@@ -7512,5 +7621,22 @@ function escapeAttrOO(s) { return escapeHtmlOO(s).replace(/'/g, '&#39;'); }
 })();
 
 </script>
+<!-- ★ M5 對話 modal -->
+<div id="chatModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="padding:14px 18px;background:var(--primary);color:var(--gold);display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-weight:700;font-size:14px;letter-spacing:1px;">💬 訂單對話 <span id="chatModalOrderNo" style="font-family:'Menlo',monospace;font-size:12px;opacity:0.8;"></span></div>
+      <button onclick="closeOrderChat()" style="background:transparent;border:none;color:var(--gold);font-size:20px;cursor:pointer;width:32px;height:32px;border-radius:16px;">✕</button>
+    </div>
+    <div id="chatModalMessages" style="flex:1;overflow-y:auto;padding:12px;background:#f8f5f0;min-height:250px;max-height:60vh;">
+      <div style="text-align:center;color:#999;font-size:12px;padding:40px 20px;">載入中...</div>
+    </div>
+    <div style="padding:10px 14px;border-top:1px solid #eee;display:flex;gap:6px;">
+      <input type="text" id="chatModalInput" placeholder="回覆客戶..." maxlength="500" style="flex:1;padding:9px 12px;border:1px solid #ddd;border-radius:18px;font-size:13px;font-family:inherit;" onkeydown="if(event.key==='Enter'){event.preventDefault();sendStaffMessage();}">
+      <button onclick="sendStaffMessage()" id="chatModalSendBtn" class="btn btn-primary" style="padding:8px 16px;border-radius:18px;font-size:13px;">送出</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
