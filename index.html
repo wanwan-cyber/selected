@@ -1163,7 +1163,9 @@
       <div class="page-content">
         <div class="page-header">
           <div class="page-title"><span class="title-bar"></span>📮 線上訂單</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button class="btn btn-outline" onclick="toggleSound(this)" id="oo-sound-btn" title="新訂單/新訊息音效通知" style="padding:6px 12px;font-size:13px;">🔔 音效</button>
+            <button class="btn btn-outline" onclick="showPage('home-banner', this)">🎨 首頁廣告</button>
             <button class="btn btn-outline" onclick="loadOnlineOrders(true)" id="oo-refresh-btn">🔄 重新整理</button>
           </div>
         </div>
@@ -1185,6 +1187,31 @@
             <div style="font-size:36px;margin-bottom:12px;opacity:0.4;">📮</div>
             點「🔄 重新整理」載入官網訂單
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         ★ M6 首頁 Banner 廣告管理頁
+         ============================================================ -->
+    <div class="page" id="home-banner-page">
+      <div class="page-content">
+        <div class="page-header">
+          <div class="page-title"><span class="title-bar"></span>🎨 首頁廣告輪播</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" onclick="loadBanners()" id="banner-refresh-btn">🔄 重新載入</button>
+            <button class="btn btn-primary" onclick="addBanner()">＋ 新增廣告</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.7;">
+          💡 上傳的圖片會顯示在官網首頁最上方輪播，建議尺寸 1200×600 px（2:1）<br>
+          點「儲存全部變更」才會同步到官網
+        </div>
+        <div id="banner-list" style="display:flex;flex-direction:column;gap:14px;">
+          <div style="text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px;">點「🔄 重新載入」載入現有廣告</div>
+        </div>
+        <div style="text-align:center;margin-top:20px;">
+          <button class="btn btn-primary" onclick="saveBanners()" id="banner-save-btn" style="padding:12px 30px;font-size:14px;letter-spacing:2px;">💾 儲存全部變更</button>
         </div>
       </div>
     </div>
@@ -7204,6 +7231,10 @@ let onlineOrders = [];
 let ooCurrentFilter = 'all';
 let currentChatOrderNo = null;
 let currentChatMessages = [];
+let ooMessagesMeta = {}; // { orderNo: { count, latestFromCustomer, latestTimestamp } }
+let ooLastReadMap = load('pos_ooLastReadMap', {}); // 每個訂單上次讀訊息的時間
+let ooPollTimer = null; // 背景輪詢 timer
+let soundEnabled = load('pos_soundEnabled', true); // 音效開關
 const OO_STATUS_LABELS = {
   unpaid: '待付款',
   paid: '已付款',
@@ -7238,19 +7269,258 @@ async function loadOnlineOrders(manual) {
     onlineOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     // 自動匯入會員
     const importedCount = autoImportMembersFromOrders(onlineOrders);
+    // 順便抓訊息元資料（未讀徽章用）
+    await fetchMessagesMeta();
     renderOnlineOrders();
     updateOnlineOrdersBadge();
     if (manual) {
       let msg = `已載入 ${onlineOrders.length} 筆訂單`;
       if (importedCount > 0) msg += `，並自動建立 ${importedCount} 位新會員 ✨`;
+      if (data.cleaned > 0) msg += `｜已自動清除 ${data.cleaned} 筆過期取消訂單`;
       toast(msg, 'success');
     }
   } catch (err) {
     console.error(err);
-    content.innerHTML = `<div class="oo-empty"><div class="oo-empty-icon">⚠️</div>載入失敗：${escapeHtmlOO(err.message)}<br><span style="font-size:11px;margin-top:6px;display:inline-block;">請檢查 Apps Script 是否已更新到 v2.4</span></div>`;
+    content.innerHTML = `<div class="oo-empty"><div class="oo-empty-icon">⚠️</div>載入失敗：${escapeHtmlOO(err.message)}<br><span style="font-size:11px;margin-top:6px;display:inline-block;">請檢查 Apps Script 是否已更新到 v2.9</span></div>`;
     if (manual) toast('載入訂單失敗：' + err.message, 'error');
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// ★ v2.9：抓所有訂單的訊息元資料（未讀徽章用）
+async function fetchMessagesMeta() {
+  const url = appSettings.syncUrl;
+  if (!url) return;
+  try {
+    const res = await fetch(url + '?action=getMessagesMeta&_t=' + Date.now());
+    const data = await res.json();
+    if (data && data.ok) ooMessagesMeta = data.meta || {};
+  } catch (e) { /* 靜默失敗 */ }
+}
+
+// 檢查某訂單有幾則未讀訊息
+function getUnreadCount(orderNo) {
+  const meta = ooMessagesMeta[orderNo];
+  if (!meta || !meta.latestFromCustomer) return 0;
+  const lastRead = ooLastReadMap[orderNo] || '';
+  return meta.latestFromCustomer > lastRead ? 1 : 0;
+}
+
+// 播放通知音效
+function playNotifySound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(); osc.stop(ctx.currentTime + 0.4);
+  } catch (e) { /* 靜默失敗 */ }
+}
+
+// 背景輪詢新訊息（每 60 秒）
+function startOoPolling() {
+  if (ooPollTimer) return;
+  ooPollTimer = setInterval(async () => {
+    if (document.hidden) return; // 頁面隱藏時不輪詢
+    const url = appSettings.syncUrl;
+    if (!url) return;
+    const prevOrderCount = onlineOrders.length;
+    const prevUnread = Object.keys(ooMessagesMeta).reduce((s, no) => s + getUnreadCount(no), 0);
+    try {
+      // 只抓 meta + 訂單數（不用重新 render 整頁）
+      const [ordersRes, metaRes] = await Promise.all([
+        fetch(url + '?action=getOnlineOrders&_t=' + Date.now()),
+        fetch(url + '?action=getMessagesMeta&_t=' + Date.now()),
+      ]);
+      const ordersData = await ordersRes.json();
+      const metaData = await metaRes.json();
+      if (ordersData && ordersData.ok) {
+        onlineOrders = (ordersData.orders || []).map(o => {
+          if (typeof o.items === 'string') {
+            try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
+          }
+          return o;
+        });
+        onlineOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        autoImportMembersFromOrders(onlineOrders);
+      }
+      if (metaData && metaData.ok) ooMessagesMeta = metaData.meta || {};
+      // 檢查有無新變化
+      const newOrderCount = onlineOrders.length;
+      const newUnread = Object.keys(ooMessagesMeta).reduce((s, no) => s + getUnreadCount(no), 0);
+      if (newOrderCount > prevOrderCount) {
+        playNotifySound();
+        toast(`🔔 有 ${newOrderCount - prevOrderCount} 筆新訂單！`, 'success');
+      } else if (newUnread > prevUnread) {
+        playNotifySound();
+        toast(`🔔 有新的客戶訊息！`, 'success');
+      }
+      updateOnlineOrdersBadge();
+      // 若目前在線上訂單頁，重新 render
+      const activePage = document.querySelector('.page.active');
+      if (activePage && activePage.id === 'orders-online-page') {
+        renderOnlineOrders();
+      }
+    } catch (e) { /* 靜默失敗 */ }
+  }, 60000);
+}
+
+function markOrderRead(orderNo) {
+  const meta = ooMessagesMeta[orderNo];
+  if (!meta) return;
+  ooLastReadMap[orderNo] = meta.latestTimestamp || new Date().toISOString();
+  save('pos_ooLastReadMap', ooLastReadMap);
+}
+
+// 切換音效
+function toggleSound(btn) {
+  soundEnabled = !soundEnabled;
+  save('pos_soundEnabled', soundEnabled);
+  if (btn) btn.innerHTML = soundEnabled ? '🔔 音效' : '🔕 靜音';
+  if (btn) btn.style.opacity = soundEnabled ? '1' : '0.5';
+  toast(soundEnabled ? '音效通知已開啟' : '音效通知已關閉', 'success');
+  if (soundEnabled) playNotifySound();
+}
+
+// 進頁面時初始化音效按鈕狀態
+function initSoundBtn() {
+  const btn = document.getElementById('oo-sound-btn');
+  if (btn) {
+    btn.innerHTML = soundEnabled ? '🔔 音效' : '🔕 靜音';
+    btn.style.opacity = soundEnabled ? '1' : '0.5';
+  }
+}
+
+// ============================================================
+// ★ M6 首頁 Banner 管理
+// ============================================================
+let bannersData = [];
+
+async function loadBanners() {
+  const btn = document.getElementById('banner-refresh-btn');
+  const listEl = document.getElementById('banner-list');
+  const url = appSettings.syncUrl;
+  if (!url) { toast('尚未設定同步網址', 'error'); return; }
+  if (btn) btn.disabled = true;
+  listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px;">載入中...</div>';
+  try {
+    // getBanners endpoint 只回傳啟用中的，改用直接讀 Sheets 更完整（POS 需要看到未啟用的）
+    // 這裡先簡化用 getBanners（雖然只回啟用，但夠用；未啟用的先不 support 編輯）
+    const res = await fetch(url + '?action=getBanners&_t=' + Date.now());
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '載入失敗');
+    bannersData = data.banners || [];
+    renderBannerList();
+    toast('已載入 ' + bannersData.length + ' 個廣告', 'success');
+  } catch (err) {
+    listEl.innerHTML = `<div style="text-align:center;padding:30px;color:#c66;font-size:13px;">載入失敗：${escapeHtmlOO(err.message)}</div>`;
+    toast('載入失敗：' + err.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderBannerList() {
+  const listEl = document.getElementById('banner-list');
+  if (bannersData.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px;line-height:1.8;"><div style="font-size:36px;opacity:0.4;margin-bottom:10px;">🎨</div>還沒有廣告<br><span style="font-size:11px;">點「＋ 新增廣告」開始建立</span></div>';
+    return;
+  }
+  listEl.innerHTML = bannersData.map((b, idx) => `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;">
+      <div style="width:120px;height:60px;background:var(--surface2);border-radius:8px;overflow:hidden;flex-shrink:0;position:relative;">
+        ${b.image ? `<img src="${escapeHtmlOO(b.image)}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:24px;">🖼️</div>`}
+      </div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;">
+        <input type="text" value="${escapeAttrOO(b.title || '')}" placeholder="標題（大字，例：夏季新品到貨）" onchange="bannersData[${idx}].title=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;">
+        <input type="text" value="${escapeAttrOO(b.subtitle || '')}" placeholder="副標（小字，例：折扣中）" onchange="bannersData[${idx}].subtitle=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;">
+        <input type="url" value="${escapeAttrOO(b.image || '')}" placeholder="圖片 URL（點下面上傳或直接貼）" onchange="bannersData[${idx}].image=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;">
+        <input type="text" value="${escapeAttrOO(b.link || '')}" placeholder="點擊連結（選填，例：#/product/xxx 或 https://...）" onchange="bannersData[${idx}].link=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px;">
+          <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" ${b.enabled ? 'checked' : ''} onchange="bannersData[${idx}].enabled=this.checked;" style="cursor:pointer;">
+            <span>啟用</span>
+          </label>
+          <button class="btn btn-outline" onclick="uploadBannerImage(${idx})" style="padding:4px 10px;font-size:11px;">📷 上傳圖</button>
+          <button class="btn btn-outline" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="padding:4px 8px;font-size:11px;">↑</button>
+          <button class="btn btn-outline" onclick="moveBanner(${idx}, 1)" ${idx === bannersData.length - 1 ? 'disabled' : ''} style="padding:4px 8px;font-size:11px;">↓</button>
+          <button class="btn btn-outline" onclick="deleteBanner(${idx})" style="padding:4px 10px;font-size:11px;color:#c66;">🗑 刪除</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addBanner() {
+  bannersData.push({
+    id: 'b' + Date.now(),
+    image: '', title: '', subtitle: '', link: '',
+    order: bannersData.length, enabled: true,
+  });
+  renderBannerList();
+}
+
+function deleteBanner(idx) {
+  if (!confirm('確定刪除這個廣告？')) return;
+  bannersData.splice(idx, 1);
+  renderBannerList();
+}
+
+function moveBanner(idx, direction) {
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= bannersData.length) return;
+  const tmp = bannersData[idx];
+  bannersData[idx] = bannersData[newIdx];
+  bannersData[newIdx] = tmp;
+  renderBannerList();
+}
+
+async function uploadBannerImage(idx) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    toast('上傳中...', 'info');
+    try {
+      const dataUrl = await compressImage(file, 1600, 0.88);
+      const cloudUrl = await uploadToCloudinary(dataUrl);
+      bannersData[idx].image = cloudUrl;
+      renderBannerList();
+      toast('上傳成功 ✓', 'success');
+    } catch (err) {
+      toast('上傳失敗：' + err.message, 'error');
+    }
+  };
+  input.click();
+}
+
+async function saveBanners() {
+  // 為每個 banner 補 order（依現在陣列順序）
+  bannersData.forEach((b, i) => { b.order = i; });
+  const btn = document.getElementById('banner-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '儲存中...'; }
+  try {
+    const res = await fetch(appSettings.syncUrl, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveBanners', banners: bannersData }),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '儲存失敗');
+    toast(`已儲存 ${data.count} 個廣告 ✓`, 'success');
+  } catch (err) {
+    toast('儲存失敗：' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 儲存全部變更'; }
   }
 }
 
@@ -7287,9 +7557,17 @@ function updateOnlineOrdersBadge() {
   const badge = document.getElementById('onlineOrdersBadge');
   if (!badge) return;
   const pendingCount = onlineOrders.filter(o => o.status === 'unpaid' || o.status === 'paid').length;
-  if (pendingCount > 0) {
-    badge.textContent = pendingCount;
+  const unreadCount = Object.keys(ooMessagesMeta).reduce((s, no) => s + getUnreadCount(no), 0);
+  const total = pendingCount + unreadCount;
+  if (total > 0) {
+    badge.textContent = total;
     badge.style.display = 'flex';
+    // 有未讀訊息時徽章變紅
+    if (unreadCount > 0) {
+      badge.style.background = '#dc3545';
+    } else {
+      badge.style.background = 'var(--gold)';
+    }
   } else {
     badge.style.display = 'none';
   }
@@ -7297,8 +7575,14 @@ function updateOnlineOrdersBadge() {
 
 function getFilteredOrders() {
   let list = onlineOrders.slice();
-  if (ooCurrentFilter !== 'all') {
+  // 已取消訂單有獨立區，不出現在其他 tab（除了「已取消」tab 本身）
+  if (ooCurrentFilter === 'cancelled') {
+    list = list.filter(o => o.status === 'cancelled');
+  } else if (ooCurrentFilter !== 'all') {
     list = list.filter(o => (o.status || 'unpaid') === ooCurrentFilter);
+  } else {
+    // 「全部」不含已取消
+    list = list.filter(o => o.status !== 'cancelled');
   }
   const q = (document.getElementById('oo-search')?.value || '').trim().toLowerCase();
   if (q) {
@@ -7314,23 +7598,29 @@ function getFilteredOrders() {
 function renderOnlineOrders() {
   // 篩選 tabs
   const tabs = document.getElementById('oo-filter-tabs');
-  const counts = { all: onlineOrders.length };
+  const counts = { all: onlineOrders.filter(o => o.status !== 'cancelled').length };
   OO_STATUS_ORDER.forEach(s => { counts[s] = onlineOrders.filter(o => (o.status || 'unpaid') === s).length; });
+  const cancelledCount = onlineOrders.filter(o => o.status === 'cancelled').length;
   tabs.innerHTML = `
     <button class="oo-tab ${ooCurrentFilter === 'all' ? 'active' : ''}" onclick="setOoFilter('all')">全部 <span class="oo-tab-count">${counts.all}</span></button>
     ${OO_STATUS_ORDER.map(s => `
       <button class="oo-tab ${ooCurrentFilter === s ? 'active' : ''}" onclick="setOoFilter('${s}')">${OO_STATUS_LABELS[s]} <span class="oo-tab-count">${counts[s]}</span></button>
     `).join('')}
+    <div style="flex:1;"></div>
+    <button class="oo-tab ${ooCurrentFilter === 'cancelled' ? 'active' : ''}" onclick="setOoFilter('cancelled')" style="opacity:.75;" title="已取消訂單保留 7 天後自動刪除">🗑 已取消 <span class="oo-tab-count">${cancelledCount}</span></button>
   `;
 
   // 訂單卡片
   const content = document.getElementById('oo-content');
   const list = getFilteredOrders();
   if (list.length === 0) {
-    content.innerHTML = `<div class="oo-empty"><div class="oo-empty-icon">📮</div>${onlineOrders.length === 0 ? '目前沒有官網訂單' : '沒有符合條件的訂單'}</div>`;
+    content.innerHTML = `<div class="oo-empty"><div class="oo-empty-icon">📮</div>${onlineOrders.length === 0 ? '目前沒有官網訂單' : (ooCurrentFilter === 'cancelled' ? '沒有已取消訂單' : '沒有符合條件的訂單')}</div>`;
     return;
   }
-  content.innerHTML = `<div class="oo-grid">${list.map(renderOrderCard).join('')}</div>`;
+  const cancelledNote = ooCurrentFilter === 'cancelled'
+    ? '<div style="font-size:11px;color:var(--text-muted);padding:8px 12px;background:rgba(0,0,0,0.03);border-radius:8px;margin-bottom:12px;">💡 已取消訂單保留 7 天後系統自動清除，如需保留請匯出或截圖</div>'
+    : '';
+  content.innerHTML = cancelledNote + `<div class="oo-grid">${list.map(renderOrderCard).join('')}</div>`;
 }
 
 function renderOrderCard(o) {
@@ -7393,7 +7683,7 @@ function renderOrderCard(o) {
         </div>
         <div class="oo-actions">
           ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
-          <button class="oo-action-btn oo-action-secondary" onclick="openOrderChat('${escapeAttrOO(o.orderNo)}')">💬 對話</button>
+          <button class="oo-action-btn oo-action-secondary" onclick="openOrderChat('${escapeAttrOO(o.orderNo)}')" style="position:relative;">💬 對話${getUnreadCount(o.orderNo) > 0 ? '<span style="position:absolute;top:-4px;right:-4px;background:#dc3545;color:#fff;width:16px;height:16px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff;">!</span>' : ''}</button>
           <button class="oo-action-btn oo-action-secondary" onclick="showOrderDetail('${escapeAttrOO(o.orderNo)}')">詳情</button>
           ${status !== 'cancelled' && status !== 'completed' ? `<button class="oo-action-btn oo-action-warn" onclick="cancelOrder('${escapeAttrOO(o.orderNo)}')">取消</button>` : ''}
         </div>
@@ -7482,6 +7772,10 @@ async function openOrderChat(orderNo) {
   if (input) input.value = '';
   modal.style.display = 'flex';
   await loadStaffChatMessages();
+  // 標記已讀 → 徽章消失
+  markOrderRead(orderNo);
+  updateOnlineOrdersBadge();
+  renderOnlineOrders();
   setTimeout(() => input && input.focus(), 100);
 }
 
@@ -7613,7 +7907,13 @@ function escapeAttrOO(s) { return escapeHtmlOO(s).replace(/'/g, '&#39;'); }
       if (page === 'orders-online') {
         // 進頁面若還沒載過就自動載
         if (onlineOrders.length === 0) loadOnlineOrders(false);
-        else renderOnlineOrders();
+        else { fetchMessagesMeta().then(() => renderOnlineOrders()); }
+        initSoundBtn();
+        startOoPolling(); // ★ 啟動 60 秒輪詢
+      }
+      if (page === 'home-banner') {
+        if (bannersData.length === 0) loadBanners();
+        else renderBannerList();
       }
       return r;
     };
