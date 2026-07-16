@@ -960,6 +960,7 @@
             <button class="pay-btn active" onclick="setPayMethod('cash', this)">💵 現金</button>
             <button class="pay-btn" onclick="setPayMethod('transfer', this)">📲 匯款</button>
             <button class="pay-btn" onclick="setPayMethod('line', this)">🟢 LINE Pay</button>
+            <button class="pay-btn" onclick="setPayMethod('selfuse', this)" style="background:#faf3eb;border-color:#c9a84c;color:#8B6F47;">👗 自用</button>
           </div>
           <div id="cash-section">
             <div class="quick-cash">
@@ -1740,9 +1741,10 @@
       <div class="form-group">
         <label>付款方式</label>
         <select id="tx-pay-method">
-          <option value="現金">💵 現金</option>
-          <option value="匯款">📲 匯款</option>
-          <option value="LINE Pay">🟢 LINE Pay</option>
+          <option value="cash">💵 現金</option>
+          <option value="transfer">📲 匯款</option>
+          <option value="line">🟢 LINE Pay</option>
+          <option value="selfuse">👗 自用</option>
         </select>
       </div>
       <div class="variant-section">
@@ -2578,6 +2580,19 @@ function clearCash() {
   calcChange();
 }
 
+// 付款方式顯示標籤（收據、報表、CSV 都用這個）
+function payMethodLabel(m) {
+  const map = {
+    'cash': '💵 現金',
+    'transfer': '📲 匯款',
+    'line': '🟢 LINE Pay',
+    'selfuse': '👗 自用',
+    // 相容舊資料（先前直接用中文字）
+    '現金': '💵 現金', '匯款': '📲 匯款', '刷卡': '刷卡', '轉帳': '📲 匯款', 'LINE Pay': '🟢 LINE Pay',
+  };
+  return map[m] || m || '—';
+}
+
 function setPayMethod(m, btn) {
   payMethod = m;
   document.querySelectorAll('.pay-btn').forEach(b => b.classList.remove('active'));
@@ -2779,9 +2794,10 @@ function doCheckout() {
   save('pos_products', products);
   save('pos_consign_items', consignItems);
 
-  // Update member
-  const pointsEarned = selectedMember ? Math.floor(total / 10) : 0;
-  if (selectedMember) {
+  // Update member（自用單不給點數、不累計會員消費）
+  const isSelfUse = payMethod === 'selfuse';
+  const pointsEarned = (selectedMember && !isSelfUse) ? Math.floor(total / 10) : 0;
+  if (selectedMember && !isSelfUse) {
     const m = members.find(x => x.id === selectedMember.id);
     if (m) { m.points += pointsEarned; m.totalSpent += total; }
     save('pos_members', members);
@@ -2818,6 +2834,7 @@ function doCheckout() {
     pointsEarned,
     note: document.getElementById('order-note').value.trim(),
     cashReceived, change,
+    isSelfUse, // 👗 自用單旗標：報表會排除、CSV 會標記
   };
   transactions.unshift(tx);
   save('pos_transactions', transactions);
@@ -2851,8 +2868,8 @@ function showReceipt(tx, total) {
     ${discRows}
     <hr class="receipt-divider">
     <div class="ri-row total"><span>合計</span><span>${fmt(total)}</span></div>
-    <div class="ri-row"><span>付款方式</span><span>${tx.payMethod}</span></div>
-    ${tx.payMethod === '現金' && tx.cashReceived ? `
+    <div class="ri-row"><span>付款方式</span><span>${payMethodLabel(tx.payMethod)}</span></div>
+    ${(tx.payMethod === 'cash' || tx.payMethod === '現金') && tx.cashReceived ? `
       <div class="ri-row"><span>　收款</span><span>${fmt(tx.cashReceived)}</span></div>
       <div class="ri-row" style="font-size:14px;font-weight:800;color:#000;"><span>　找零</span><span>${fmt(tx.change || 0)}</span></div>
     ` : ''}
@@ -6775,13 +6792,17 @@ function renderHorizontalRows(days, maxVal, cfg) {
 }
 
 function renderReport() {
-  const total = transactions.reduce((s, t) => s + t.total, 0);
-  const totalProfit = transactions.reduce((s, t) => s + getTxProfit(t), 0);
+  // 👗 自用單不計入營收/淨利/銷售統計
+  const salesTxs = transactions.filter(t => !t.isSelfUse);
+  const selfUseTxs = transactions.filter(t => t.isSelfUse);
+
+  const total = salesTxs.reduce((s, t) => s + t.total, 0);
+  const totalProfit = salesTxs.reduce((s, t) => s + getTxProfit(t), 0);
 
   // 今日：用 Date 比對，跨裝置一致
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-  const todayTxs = transactions.filter(t => {
+  const todayTxs = salesTxs.filter(t => {
     const d = parseTxDate(t);
     return d && d >= todayStart && d < tomorrowStart;
   });
@@ -6795,7 +6816,7 @@ function renderReport() {
   // 本月銷售
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthTxs = transactions.filter(t => {
+  const monthTxs = salesTxs.filter(t => {
     const d = parseTxDate(t);
     return d && d >= monthStart;
   });
@@ -6804,16 +6825,16 @@ function renderReport() {
 
   // 昨日比較
   const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-  const yesterdayTxs = transactions.filter(t => {
+  const yesterdayTxs = salesTxs.filter(t => {
     const d = parseTxDate(t);
     return d && d >= yesterdayStart && d < todayStart;
   });
   const yesterdayTotal = yesterdayTxs.reduce((s, t) => s + t.total, 0);
   const dodChange = yesterdayTotal > 0 ? Math.round((todayTotal - yesterdayTotal) / yesterdayTotal * 100) : null;
 
-  // 最熱銷商品
+  // 最熱銷商品（也排除自用）
   const itemSales = {};
-  transactions.forEach(t => {
+  salesTxs.forEach(t => {
     (t.items || []).forEach(i => {
       const key = i.productId || i.name;
       if (!itemSales[key]) itemSales[key] = { name: i.name, qty: 0, revenue: 0 };
@@ -6822,6 +6843,15 @@ function renderReport() {
     });
   });
   const topProduct = Object.values(itemSales).sort((a, b) => b.qty - a.qty)[0];
+
+  // 👗 自用單統計（本月）
+  const monthSelfUseTxs = selfUseTxs.filter(t => {
+    const d = parseTxDate(t);
+    return d && d >= monthStart;
+  });
+  const monthSelfUseTotal = monthSelfUseTxs.reduce((s, t) => s + t.total, 0);
+  const monthSelfUseQty = monthSelfUseTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
+  const totalSelfUseCount = selfUseTxs.length;
 
   document.getElementById('stat-cards').innerHTML = `
     <div class="stat-card stat-today">
@@ -6862,6 +6892,11 @@ function renderReport() {
         <div class="sc-sub">尚無資料</div>
       `}
     </div>
+    <div class="stat-card" style="background:linear-gradient(135deg,#faf3eb,#f5ead6);border:1px solid #c9a84c;">
+      <div class="sc-label" style="color:#8B6F47;">👗 本月自用</div>
+      <div class="sc-value" style="color:#8B6F47;">${monthSelfUseQty} 件</div>
+      <div class="sc-sub" style="color:#8B6F47;">原價 ${fmt(monthSelfUseTotal)} · 累計 ${totalSelfUseCount} 筆</div>
+    </div>
   `;
 
   // 呼叫可切換的趨勢分析（使用者可切換日期範圍與指標）
@@ -6892,7 +6927,7 @@ function renderReport() {
       <td style="font-family:monospace;font-size:12px;color:var(--text-muted);">${t.date}</td>
       <td>${t.memberName === '非會員' ? '<span style="color:var(--text-muted);">非會員</span>' : '<strong>'+t.memberName+'</strong>'}</td>
       <td style="max-width:240px;">${t.items.map(i=>i.name+' ×'+i.qty).join('、')}</td>
-      <td><span class="badge" style="background:#eef1f5;color:var(--primary);">${t.payMethod}</span></td>
+      <td><span class="badge" style="background:${t.isSelfUse?'#faf3eb':'#eef1f5'};color:${t.isSelfUse?'#8B6F47':'var(--primary)'};${t.isSelfUse?'border:1px solid #c9a84c;':''}">${payMethodLabel(t.payMethod)}</span></td>
       <td style="font-weight:800;color:var(--gold);text-align:right;font-variant-numeric:tabular-nums;">${fmt(t.total)}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;">
         <span style="font-weight:700;color:${profit>=0?'var(--success)':'var(--danger)'};">${fmt(profit)}</span>
@@ -7009,11 +7044,14 @@ function renderVendorStats() {
 }
 
 function exportCSV() {
-  const rows = [['日期','會員','商品','付款方式','小計','折扣','合計','淨利','獲得積分']];
+  const rows = [['日期','類型','會員','商品','付款方式','小計','折扣','合計','淨利','獲得積分']];
   transactions.forEach(t => rows.push([
-    t.date, t.memberName,
+    t.date,
+    t.isSelfUse ? '👗 自用' : '銷售',
+    t.memberName,
     t.items.map(i=>i.name+'x'+i.qty).join(';'),
-    t.payMethod, t.subtotal, t.discount+t.couponDiscount+t.memberDiscount, t.total, getTxProfit(t), t.pointsEarned
+    payMethodLabel(t.payMethod),
+    t.subtotal, t.discount+t.couponDiscount+t.memberDiscount, t.total, getTxProfit(t), t.pointsEarned
   ]));
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const a = document.createElement('a');
@@ -7034,7 +7072,9 @@ function openTxEditModal(id) {
   editingTxItems = (t.items || []).map(i => ({ ...i }));
   document.getElementById('tx-date').value = t.date;
   document.getElementById('tx-member').value = t.memberName || '非會員';
-  document.getElementById('tx-pay-method').value = t.payMethod || '現金';
+  // 相容舊資料：把中文值對回內部代碼
+  const _legacyPayMap = { '現金':'cash', '匯款':'transfer', '轉帳':'transfer', '刷卡':'transfer', 'LINE Pay':'line' };
+  document.getElementById('tx-pay-method').value = _legacyPayMap[t.payMethod] || t.payMethod || 'cash';
   renderTxEditItems();
   openModal('tx-modal');
 }
@@ -7111,6 +7151,7 @@ function saveTxEdit() {
   t.subtotal = sub;
   t.total = newTotal;
   t.payMethod = document.getElementById('tx-pay-method').value;
+  t.isSelfUse = (t.payMethod === 'selfuse'); // 👗 同步自用旗標
   save('pos_transactions', transactions);
   closeModal('tx-modal');
   renderReport();
