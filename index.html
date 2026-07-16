@@ -1009,7 +1009,10 @@
       <div class="page-content">
         <div class="page-header">
           <div class="page-title"><span class="title-bar"></span>👤 會員管理</div>
-          <button class="btn btn-primary" onclick="openMemberModal()">＋ 新增會員</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" onclick="mergeDuplicateMembers()" title="掃描相同手機號碼的重複會員並自動合併資料">🔗 整合重複</button>
+            <button class="btn btn-primary" onclick="openMemberModal()">＋ 新增會員</button>
+          </div>
         </div>
         <div class="member-cards" id="member-cards"></div>
       </div>
@@ -4692,6 +4695,14 @@ function saveMember() {
   if (barcode && members.some(x => x.barcode === barcode && x.id !== editMemberId)) {
     toast('此條碼已被其他會員使用', 'error'); return;
   }
+  // ★ 電話重複檢查（後 9 碼比對，避免不同格式的相同號碼重複）
+  const phoneKey = normalizePhoneForMatch(phone);
+  if (phoneKey) {
+    const existing = members.find(x => normalizePhoneForMatch(x.phone) === phoneKey && x.id !== editMemberId);
+    if (existing) {
+      if (!confirm(`⚠️ 此手機號碼已有會員：\n\n${existing.name}｜${existing.phone}\n\n仍要新增這位新會員嗎？（會出現 2 筆同手機號碼的會員，之後可用「🔗 整合重複」合併）`)) return;
+    }
+  }
   const data = {
     id: editMemberId || uid(),
     name, phone,
@@ -7433,22 +7444,28 @@ function renderBannerList() {
     listEl.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px;line-height:1.8;"><div style="font-size:36px;opacity:0.4;margin-bottom:10px;">🎨</div>還沒有廣告<br><span style="font-size:11px;">點「＋ 新增廣告」開始建立</span></div>';
     return;
   }
+  // Cloudinary 縮圖轉換（預覽圖：240px 寬）
+  const cldThumb = (url) => {
+    if (!url || typeof url !== 'string' || !url.includes('cloudinary.com')) return url;
+    if (url.match(/\/upload\/[a-z]_[^\/]+\//)) return url;
+    return url.replace('/upload/', '/upload/w_240,c_limit,q_auto:good,f_auto/');
+  };
   listEl.innerHTML = bannersData.map((b, idx) => `
     <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;gap:12px;align-items:flex-start;">
-      <div style="width:120px;height:60px;background:var(--surface2);border-radius:8px;overflow:hidden;flex-shrink:0;position:relative;">
-        ${b.image ? `<img src="${escapeHtmlOO(b.image)}" style="width:100%;height:100%;object-fit:cover;">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:24px;">🖼️</div>`}
+      <div style="width:140px;height:70px;background:var(--surface2);border-radius:8px;overflow:hidden;flex-shrink:0;position:relative;">
+        ${b.image ? `<img src="${escapeHtmlOO(cldThumb(b.image))}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--text-muted);font-size:11px;text-align:center;">圖片載入失敗</div>` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:24px;">🖼️</div>`}
       </div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;">
         <input type="text" value="${escapeAttrOO(b.title || '')}" placeholder="標題（大字，例：夏季新品到貨）" onchange="bannersData[${idx}].title=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;">
         <input type="text" value="${escapeAttrOO(b.subtitle || '')}" placeholder="副標（小字，例：折扣中）" onchange="bannersData[${idx}].subtitle=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;">
-        <input type="url" value="${escapeAttrOO(b.image || '')}" placeholder="圖片 URL（點下面上傳或直接貼）" onchange="bannersData[${idx}].image=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;">
+        <input type="url" value="${escapeAttrOO(b.image || '')}" placeholder="圖片 URL（點下面上傳或直接貼）" onchange="bannersData[${idx}].image=this.value;renderBannerList();" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;">
         <input type="text" value="${escapeAttrOO(b.link || '')}" placeholder="點擊連結（選填，例：#/product/xxx 或 https://...）" onchange="bannersData[${idx}].link=this.value" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px;">
           <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
             <input type="checkbox" ${b.enabled ? 'checked' : ''} onchange="bannersData[${idx}].enabled=this.checked;" style="cursor:pointer;">
             <span>啟用</span>
           </label>
-          <button class="btn btn-outline" onclick="uploadBannerImage(${idx})" style="padding:4px 10px;font-size:11px;">📷 上傳圖</button>
+          <button class="btn btn-outline" onclick="uploadBannerImage(${idx})" style="padding:4px 10px;font-size:11px;" id="banner-upload-btn-${idx}">📷 上傳圖</button>
           <button class="btn btn-outline" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="padding:4px 8px;font-size:11px;">↑</button>
           <button class="btn btn-outline" onclick="moveBanner(${idx}, 1)" ${idx === bannersData.length - 1 ? 'disabled' : ''} style="padding:4px 8px;font-size:11px;">↓</button>
           <button class="btn btn-outline" onclick="deleteBanner(${idx})" style="padding:4px 10px;font-size:11px;color:#c66;">🗑 刪除</button>
@@ -7489,15 +7506,27 @@ async function uploadBannerImage(idx) {
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    toast('上傳中...', 'info');
+    const cloudName = appSettings.cloudinaryCloud;
+    const preset = appSettings.cloudinaryPreset;
+    if (!cloudName || !preset) {
+      toast('請先在「設定」設定 Cloudinary 圖床帳號', 'error');
+      return;
+    }
+    const btn = document.getElementById(`banner-upload-btn-${idx}`);
+    if (btn) { btn.disabled = true; btn.textContent = '壓縮中...'; }
     try {
-      const dataUrl = await compressImage(file, 1600, 0.88);
-      const cloudUrl = await uploadToCloudinary(dataUrl);
+      // ★ Banner 是首頁大圖，用高品質壓縮（2000px 寬、0.92 品質）
+      const dataUrl = await compressImage(file, 2000, 0.92);
+      if (btn) btn.textContent = '上傳中...';
+      // ★ 呼叫 uploadOneToCloudinary（真正上傳單張回傳 URL 的 function）
+      const cloudUrl = await uploadOneToCloudinary(dataUrl, cloudName, preset);
       bannersData[idx].image = cloudUrl;
-      renderBannerList();
+      renderBannerList(); // renderBannerList 會重繪整個列表，按鈕會回到預設狀態
       toast('上傳成功 ✓', 'success');
     } catch (err) {
-      toast('上傳失敗：' + err.message, 'error');
+      console.error(err);
+      toast('上傳失敗：' + (err.message || '未知錯誤'), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '📷 上傳圖'; }
     }
   };
   input.click();
@@ -7524,13 +7553,96 @@ async function saveBanners() {
   }
 }
 
+// 電話正規化（後 9 碼）— 解決 "0912345678" vs 數字 912345678 的比對問題
+function normalizePhoneForMatch(p) {
+  const digits = String(p == null ? '' : p).replace(/\D/g, '');
+  return digits.slice(-9);
+}
+
+// ★ 整合重複會員（後 9 碼相同視為同一人）
+function mergeDuplicateMembers() {
+  if (!Array.isArray(members) || members.length === 0) {
+    toast('目前沒有會員資料', 'warn');
+    return;
+  }
+  // 用電話後 9 碼分組
+  const groups = {};
+  members.forEach(m => {
+    const key = normalizePhoneForMatch(m.phone);
+    if (!key) return; // 沒電話的跳過
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(m);
+  });
+  // 找出重複的組
+  const duplicates = Object.entries(groups).filter(([_, arr]) => arr.length > 1);
+  if (duplicates.length === 0) {
+    toast('沒有找到重複會員 ✓', 'success');
+    return;
+  }
+  // 預覽訊息
+  const previewLines = duplicates.slice(0, 5).map(([phoneKey, arr]) => {
+    const names = arr.map(m => m.name).join('、');
+    return `  ・0${phoneKey}：${arr.length} 筆（${names}）`;
+  }).join('\n');
+  const moreLine = duplicates.length > 5 ? `\n  ... 還有 ${duplicates.length - 5} 組` : '';
+  const affectedCount = duplicates.reduce((s, [_, arr]) => s + arr.length, 0);
+  const removeCount = affectedCount - duplicates.length;
+  const msg = `找到 ${duplicates.length} 組重複會員（共 ${affectedCount} 筆記錄）：\n\n${previewLines}${moreLine}\n\n整合後將剩下 ${duplicates.length} 位（會刪除 ${removeCount} 筆重複記錄）。\n\n合併規則：\n・保留最早的資料為主\n・累計消費金額、點數相加\n・保留有值的姓名、生日、備註\n\n確定整合？`;
+  if (!confirm(msg)) return;
+
+  // 執行合併
+  let mergedCount = 0;
+  duplicates.forEach(([phoneKey, arr]) => {
+    // 依 joinedAt 或 id 排序（最舊的當主）
+    arr.sort((a, b) => {
+      // 若有 joinedAt 用 joinedAt，沒有用 id
+      const aKey = a.joinedAt || a.id;
+      const bKey = b.joinedAt || b.id;
+      return String(aKey).localeCompare(String(bKey));
+    });
+    const primary = arr[0];
+    const others = arr.slice(1);
+    // 合併資料
+    others.forEach(other => {
+      // 累加消費
+      primary.totalSpent = (primary.totalSpent || 0) + (other.totalSpent || 0);
+      primary.points = (primary.points || 0) + (other.points || 0);
+      // 空欄位用其他人的值補
+      if (!primary.name && other.name) primary.name = other.name;
+      if (!primary.birthday && other.birthday) primary.birthday = other.birthday;
+      if (!primary.barcode && other.barcode) primary.barcode = other.barcode;
+      if (!primary.lineId && other.lineId) primary.lineId = other.lineId;
+      // 電話統一成標準格式 "09XXXXXXXX"（10 碼字串）
+      primary.phone = '0' + phoneKey;
+      // 備註合併
+      const notes = [primary.note, other.note].filter(Boolean).filter(n => !n.startsWith('來自官網訂單'));
+      const orderRefs = [primary.note, other.note].filter(Boolean).filter(n => n.startsWith('來自官網訂單'));
+      const combinedNote = [...new Set(notes)].join(' | ');
+      const combinedOrderRef = orderRefs.length > 0 ? orderRefs[0] : '';
+      primary.note = [combinedNote, combinedOrderRef].filter(Boolean).join(' | ');
+    });
+    // 刪除重複的
+    others.forEach(other => {
+      const idx = members.findIndex(m => m.id === other.id);
+      if (idx >= 0) members.splice(idx, 1);
+    });
+    mergedCount += others.length;
+  });
+  save('pos_members', members);
+  renderMemberCards();
+  if (typeof populateMemberSelect === 'function') populateMemberSelect();
+  toast(`✓ 已整合 ${duplicates.length} 組會員，刪除 ${mergedCount} 筆重複記錄`, 'success');
+}
+
 // 自動匯入新客戶為會員（電話當識別碼）
 function autoImportMembersFromOrders(orders) {
   let importedCount = 0;
   orders.forEach(o => {
     if (!o.phone || !o.name) return;
-    // 電話已存在會員中 → 跳過
-    if (members.some(m => m.phone === o.phone)) return;
+    const orderPhoneKey = normalizePhoneForMatch(o.phone);
+    if (!orderPhoneKey) return;
+    // ★ 用正規化電話比對（避免因為 "0912345678" vs 912345678 差異而重複建立會員）
+    if (members.some(m => normalizePhoneForMatch(m.phone) === orderPhoneKey)) return;
     // 建立新會員
     const newMember = {
       id: (typeof uid === 'function') ? uid() : ('m_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)),
