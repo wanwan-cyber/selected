@@ -7740,6 +7740,8 @@ function mergeDuplicateMembers() {
 
   // 執行合併
   let mergedCount = 0;
+  let totalReassignedTx = 0;   // 🩹 搬遷過去的交易數
+  let totalReassignedHeld = 0; // 🩹 搬遷過去的掛單數
   duplicates.forEach(([phoneKey, arr]) => {
     // 依 joinedAt 或 id 排序（最舊的當主）
     arr.sort((a, b) => {
@@ -7770,19 +7772,45 @@ function mergeDuplicateMembers() {
       primary.note = [combinedNote, combinedOrderRef].filter(Boolean).join(' | ');
     });
     // 刪除重複的
+    let reassignedTx = 0;
+    let reassignedHeld = 0;
     others.forEach(other => {
+      // 🩹 把舊交易/掛單的 memberId 改指到主帳號，避免產生「孤兒交易」
+      transactions.forEach(t => {
+        if (t.memberId === other.id) {
+          t.memberId = primary.id;
+          t.memberName = primary.name;
+          reassignedTx++;
+        }
+      });
+      heldOrders.forEach(h => {
+        if (h.member && h.member.id === other.id) {
+          h.member.id = primary.id;
+          h.member.name = primary.name;
+          reassignedHeld++;
+        }
+      });
       const idx = members.findIndex(m => m.id === other.id);
       if (idx >= 0) members.splice(idx, 1);
       // 🪦 加入墓碑清單
       if (!deletedMemberIds.includes(other.id)) deletedMemberIds.push(other.id);
     });
+    // 累加本組的搬遷數
+    totalReassignedTx += reassignedTx;
+    totalReassignedHeld += reassignedHeld;
     mergedCount += others.length;
   });
   save('pos_deleted_member_ids', deletedMemberIds);
   save('pos_members', members);
+  if (totalReassignedTx > 0) save('pos_transactions', transactions);
+  if (totalReassignedHeld > 0) save('pos_held_orders', heldOrders);
   renderMemberCards();
   if (typeof populateMemberSelect === 'function') populateMemberSelect();
-  toast(`✓ 已整合 ${duplicates.length} 組會員，刪除 ${mergedCount} 筆重複記錄`, 'success');
+  // 訊息包含搬遷統計
+  const reassignMsg = (totalReassignedTx || totalReassignedHeld)
+    ? ` · 搬遷 ${totalReassignedTx} 筆交易${totalReassignedHeld?` + ${totalReassignedHeld} 筆掛單`:''}`
+    : '';
+  toast(`✓ 已整合 ${duplicates.length} 組會員，刪除 ${mergedCount} 筆重複${reassignMsg}`, 'success');
 }
 
 // 自動匯入新客戶為會員（電話當識別碼）
