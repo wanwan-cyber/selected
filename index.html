@@ -1011,11 +1011,23 @@
         <div class="page-header">
           <div class="page-title"><span class="title-bar"></span>👤 會員管理</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" id="member-select-btn" onclick="toggleMemberSelectMode()">☑️ 多選</button>
             <button class="btn btn-outline" onclick="mergeDuplicateMembers()" title="掃描相同手機號碼的重複會員並自動合併資料">🔗 整合重複</button>
             <button class="btn btn-primary" onclick="openMemberModal()">＋ 新增會員</button>
           </div>
         </div>
         <div class="member-cards" id="member-cards"></div>
+        <!-- ☑️ 多選模式的浮動操作列 -->
+        <div id="member-select-bar" style="display:none;position:sticky;bottom:12px;margin-top:16px;background:#fff;border:2px solid var(--gold);border-radius:14px;padding:14px 18px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:50;display:none;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="font-weight:800;color:var(--primary);">
+            已選 <span id="member-select-count" style="color:var(--gold);font-size:20px;">0</span> 位
+          </div>
+          <div style="flex:1;"></div>
+          <button class="btn btn-outline btn-sm" onclick="selectAllMembers()">全選</button>
+          <button class="btn btn-outline btn-sm" onclick="clearMemberSelection()">清空</button>
+          <button class="btn btn-danger" onclick="deleteSelectedMembers()">🗑 刪除選取</button>
+          <button class="btn btn-outline btn-sm" onclick="toggleMemberSelectMode()">✕ 退出</button>
+        </div>
       </div>
     </div>
 
@@ -1989,6 +2001,9 @@ let payMethod = 'cash';
 let appliedCoupon = null;
 let editProductId = null;
 let editMemberId = null;
+// ☑️ 會員多選刪除模式
+let memberSelectMode = false;
+let selectedMemberIds = new Set();
 let pendingProduct = null; // for variant selection
 let pmColors = [];
 let pmSizes = [];
@@ -4681,8 +4696,19 @@ function renderMemberCards() {
   el.innerHTML = members.map(m => {
     const tier = getMemberTier(m.totalSpent);
     const tc = getMemberTierClass(m.totalSpent);
+    const isSelected = selectedMemberIds.has(m.id);
+    // ☑️ 多選模式的卡片樣式
+    const cardStyle = memberSelectMode
+      ? `cursor:pointer;${isSelected?'outline:3px solid var(--gold);background:#fffaf0;':'outline:2px dashed #ddd;'}`
+      : '';
+    const cardOnclick = memberSelectMode ? `onclick="toggleMemberSelect('${m.id}')"` : '';
     return `
-    <div class="member-card">
+    <div class="member-card" style="${cardStyle}" ${cardOnclick}>
+      ${memberSelectMode ? `
+        <div style="position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;background:${isSelected?'var(--gold)':'#fff'};border:2px solid ${isSelected?'var(--gold)':'#ccc'};display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;font-weight:900;">
+          ${isSelected?'✓':''}
+        </div>
+      ` : ''}
       <div class="mc-top">
         <div class="mc-avatar">${m.name[0]}</div>
         <div class="mc-info">
@@ -4696,12 +4722,20 @@ function renderMemberCards() {
         <div class="mc-stat"><div class="val">${m.points.toLocaleString()}</div><div class="lbl">積分</div></div>
         <div class="mc-stat"><div class="val">${fmt(m.totalSpent)}</div><div class="lbl">累計消費</div></div>
       </div>
+      ${memberSelectMode ? '' : `
       <div class="mc-actions">
         <button class="btn btn-outline btn-sm" style="flex:1;" onclick="openMemberModal('${m.id}')">編輯</button>
         <button class="btn btn-danger btn-sm" onclick="deleteMember('${m.id}')">刪除</button>
-      </div>
+      </div>`}
     </div>`;
   }).join('');
+  // 更新選取計數
+  const bar = document.getElementById('member-select-bar');
+  if (bar) {
+    bar.style.display = memberSelectMode ? 'flex' : 'none';
+    const cnt = document.getElementById('member-select-count');
+    if (cnt) cnt.textContent = selectedMemberIds.size;
+  }
 }
 function openMemberModal(id) {
   editMemberId = id || null;
@@ -4762,6 +4796,63 @@ function deleteMember(id) {
   save('pos_members', members);
   renderMemberCards(); populateMemberSelect();
   toast('會員已刪除', 'warn');
+}
+
+// ============ ☑️ 會員多選刪除 ============
+function toggleMemberSelectMode() {
+  memberSelectMode = !memberSelectMode;
+  selectedMemberIds.clear();
+  const btn = document.getElementById('member-select-btn');
+  if (btn) {
+    btn.innerHTML = memberSelectMode ? '✕ 取消多選' : '☑️ 多選';
+    btn.classList.toggle('btn-primary', memberSelectMode);
+    btn.classList.toggle('btn-outline', !memberSelectMode);
+  }
+  renderMemberCards();
+}
+
+function toggleMemberSelect(id) {
+  if (selectedMemberIds.has(id)) {
+    selectedMemberIds.delete(id);
+  } else {
+    selectedMemberIds.add(id);
+  }
+  renderMemberCards();
+}
+
+function selectAllMembers() {
+  members.forEach(m => selectedMemberIds.add(m.id));
+  renderMemberCards();
+}
+
+function clearMemberSelection() {
+  selectedMemberIds.clear();
+  renderMemberCards();
+}
+
+function deleteSelectedMembers() {
+  const ids = Array.from(selectedMemberIds);
+  if (!ids.length) { toast('請先勾選要刪除的會員', 'warn'); return; }
+  if (!confirm(`確定要刪除選取的 ${ids.length} 位會員嗎？此操作無法從 UI 復原。`)) return;
+  // 從陣列移除
+  members = members.filter(m => !selectedMemberIds.has(m.id));
+  // 🪦 全部進墓碑
+  ids.forEach(id => {
+    if (!deletedMemberIds.includes(id)) deletedMemberIds.push(id);
+  });
+  save('pos_deleted_member_ids', deletedMemberIds);
+  save('pos_members', members);
+  const n = ids.length;
+  selectedMemberIds.clear();
+  memberSelectMode = false;
+  const btn = document.getElementById('member-select-btn');
+  if (btn) {
+    btn.innerHTML = '☑️ 多選';
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-outline');
+  }
+  renderMemberCards(); populateMemberSelect();
+  toast(`已刪除 ${n} 位會員`, 'success');
 }
 
 // ======================== COUPONS ========================
