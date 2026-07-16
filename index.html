@@ -1963,6 +1963,13 @@ let members = load('pos_members', [
   { id: 'm3', name: '王怡君', phone: '0934-567-890', birthday: '1995-03-08', points: 890, totalSpent: 8900, note: '' },
 ]);
 
+// 🪦 已刪除會員 ID 墓碑清單（避免雲端同步時把刪掉的會員推回來）
+let deletedMemberIds = load('pos_deleted_member_ids', []);
+// 保底：確保 members 內沒有已標記刪除的（例如舊裝置沒有這個清單時的殘留）
+if (deletedMemberIds.length) {
+  members = members.filter(m => !deletedMemberIds.includes(m.id));
+}
+
 let coupons = load('pos_coupons', [
   { id: 'c1', code: 'WELCOME10', name: '新會員9折', type: 'pct', value: 10, minOrder: 500, maxUses: 100, used: 12, start: '', end: '', active: true },
   { id: 'c2', code: 'SAVE200', name: '滿千折200', type: 'fixed', value: 200, minOrder: 1000, maxUses: 50, used: 8, start: '', end: '', active: true },
@@ -4035,8 +4042,12 @@ async function syncDownload(showToast = false) {
       }
     }
     if (data.members && Array.isArray(data.members)) {
-      if (JSON.stringify(data.members) !== JSON.stringify(members)) {
-        members = data.members;
+      // 🪦 過濾掉已刪除的會員（防止雲端把它們推回來）
+      const filteredMembers = deletedMemberIds.length
+        ? data.members.filter(m => !deletedMemberIds.includes(m.id))
+        : data.members;
+      if (JSON.stringify(filteredMembers) !== JSON.stringify(members)) {
+        members = filteredMembers;
         save('pos_members', members);
         changed = true;
       }
@@ -4743,6 +4754,11 @@ function saveMember() {
 function deleteMember(id) {
   if (!confirm('確定要刪除此會員？')) return;
   members = members.filter(x => x.id !== id);
+  // 🪦 加入墓碑清單，避免雲端同步把它推回來
+  if (!deletedMemberIds.includes(id)) {
+    deletedMemberIds.push(id);
+    save('pos_deleted_member_ids', deletedMemberIds);
+  }
   save('pos_members', members);
   renderMemberCards(); populateMemberSelect();
   toast('會員已刪除', 'warn');
@@ -7666,9 +7682,12 @@ function mergeDuplicateMembers() {
     others.forEach(other => {
       const idx = members.findIndex(m => m.id === other.id);
       if (idx >= 0) members.splice(idx, 1);
+      // 🪦 加入墓碑清單
+      if (!deletedMemberIds.includes(other.id)) deletedMemberIds.push(other.id);
     });
     mergedCount += others.length;
   });
+  save('pos_deleted_member_ids', deletedMemberIds);
   save('pos_members', members);
   renderMemberCards();
   if (typeof populateMemberSelect === 'function') populateMemberSelect();
