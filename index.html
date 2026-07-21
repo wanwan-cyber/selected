@@ -1409,6 +1409,27 @@
 </div>
 
 <!-- Member Modal -->
+<!-- 🔗 整合重複會員 - 預覽確認 modal -->
+<div class="modal-overlay" id="merge-preview-modal">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-head">
+      <h3>🔗 整合重複會員 · 預覽</h3>
+      <button class="modal-close" onclick="closeModal('merge-preview-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="mp-summary" style="background:linear-gradient(135deg,#fffbf0,#fff5e0);border:1px solid var(--gold);border-radius:10px;padding:14px 18px;margin-bottom:16px;font-size:14px;color:var(--primary);line-height:1.7;"></div>
+      <div style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--text-muted);line-height:1.6;">
+        📌 <strong>合併規則：</strong>最早的會員為主帳號 · 點數/消費相加 · 空欄位互補 · 舊交易/掛單自動搬遷到主帳號
+      </div>
+      <div id="mp-groups" style="max-height:50vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('merge-preview-modal')">取消</button>
+      <button class="btn btn-primary" onclick="commitMemberMerge()">✓ 確認合併</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="member-modal">
   <div class="modal">
     <div class="modal-head">
@@ -7708,6 +7729,8 @@ function normalizePhoneForMatch(p) {
 }
 
 // ★ 整合重複會員（後 9 碼相同視為同一人）
+// 🔗 整合重複會員：第一步 - 掃出重複、預先計算合併結果、顯示預覽 modal
+let _pendingMergeGroups = null; // 預覽和確認之間暫存
 function mergeDuplicateMembers() {
   if (!Array.isArray(members) || members.length === 0) {
     toast('目前沒有會員資料', 'warn');
@@ -7727,21 +7750,104 @@ function mergeDuplicateMembers() {
     toast('沒有找到重複會員 ✓', 'success');
     return;
   }
-  // 預覽訊息
-  const previewLines = duplicates.slice(0, 5).map(([phoneKey, arr]) => {
-    const names = arr.map(m => m.name).join('、');
-    return `  ・0${phoneKey}：${arr.length} 筆（${names}）`;
-  }).join('\n');
-  const moreLine = duplicates.length > 5 ? `\n  ... 還有 ${duplicates.length - 5} 組` : '';
-  const affectedCount = duplicates.reduce((s, [_, arr]) => s + arr.length, 0);
-  const removeCount = affectedCount - duplicates.length;
-  const msg = `找到 ${duplicates.length} 組重複會員（共 ${affectedCount} 筆記錄）：\n\n${previewLines}${moreLine}\n\n整合後將剩下 ${duplicates.length} 位（會刪除 ${removeCount} 筆重複記錄）。\n\n合併規則：\n・保留最早的資料為主\n・累計消費金額、點數相加\n・保留有值的姓名、生日、備註\n\n確定整合？`;
-  if (!confirm(msg)) return;
 
-  // 執行合併
+  // 為每一組預先計算合併預覽（主帳號、others、合併後的數字、會搬遷幾筆單）
+  const preview = duplicates.map(([phoneKey, arr]) => {
+    // 排序：把最早的當主
+    const sorted = [...arr].sort((a, b) => {
+      const aKey = a.joinedAt || a.id;
+      const bKey = b.joinedAt || b.id;
+      return String(aKey).localeCompare(String(bKey));
+    });
+    const primary = sorted[0];
+    const others = sorted.slice(1);
+    // 合併後的數字
+    const mergedTotalSpent = sorted.reduce((s, m) => s + (m.totalSpent || 0), 0);
+    const mergedPoints = sorted.reduce((s, m) => s + (m.points || 0), 0);
+    // 影響的交易/掛單數
+    const otherIds = new Set(others.map(o => o.id));
+    const txCount = transactions.filter(t => otherIds.has(t.memberId)).length;
+    const heldCount = heldOrders.filter(h => h.member && otherIds.has(h.member.id)).length;
+    return { phoneKey, primary, others, mergedTotalSpent, mergedPoints, txCount, heldCount };
+  });
+
+  _pendingMergeGroups = duplicates; // 存起來給確認用
+  openMergePreviewModal(preview);
+}
+
+// 渲染預覽 modal 的內容並開啟
+function openMergePreviewModal(preview) {
+  const totalMembers = preview.reduce((s, g) => s + 1 + g.others.length, 0);
+  const totalRemoved = preview.reduce((s, g) => s + g.others.length, 0);
+  const totalTx = preview.reduce((s, g) => s + g.txCount, 0);
+  const totalHeld = preview.reduce((s, g) => s + g.heldCount, 0);
+
+  document.getElementById('mp-summary').innerHTML = `
+    <div style="font-size:16px;font-weight:800;margin-bottom:6px;">找到 ${preview.length} 組重複 · 涉及 ${totalMembers} 位會員</div>
+    <div>合併後將剩下 <strong style="color:var(--gold);font-size:18px;">${preview.length}</strong> 位，刪除 <strong>${totalRemoved}</strong> 筆重複記錄${totalTx?` · 搬遷 <strong>${totalTx}</strong> 筆交易`:''}${totalHeld?` + <strong>${totalHeld}</strong> 筆掛單`:''}</div>
+  `;
+
+  document.getElementById('mp-groups').innerHTML = preview.map((g, i) => {
+    const primaryFirstSpent = g.primary.totalSpent || 0;
+    const primaryFirstPoints = g.primary.points || 0;
+    const spentDelta = g.mergedTotalSpent - primaryFirstSpent;
+    const pointsDelta = g.mergedPoints - primaryFirstPoints;
+    return `
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;">
+      <div style="background:var(--bg);padding:8px 14px;font-size:12px;color:var(--text-muted);font-weight:700;">
+        組 ${i+1} · 📱 0${g.phoneKey}
+      </div>
+      <!-- 主帳號 -->
+      <div style="padding:12px 14px;background:linear-gradient(90deg,#fffbf0,#fff);border-left:4px solid var(--gold);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div>
+            <span style="background:var(--gold);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-right:8px;">★ 主帳號</span>
+            <strong style="font-size:15px;">${g.primary.name || '(無名)'}</strong>
+            ${g.primary.birthday ? `<span style="color:var(--text-muted);font-size:12px;margin-left:6px;">🎂 ${g.primary.birthday}</span>` : ''}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);">
+            消費 ${fmt(primaryFirstSpent)} · 積分 ${primaryFirstPoints.toLocaleString()}
+          </div>
+        </div>
+      </div>
+      <!-- 被合併的分身 -->
+      ${g.others.map(o => `
+        <div style="padding:10px 14px;background:#fafafa;border-top:1px dashed var(--border);opacity:.85;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div>
+              <span style="background:#ddd;color:#666;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-right:8px;">分身</span>
+              <span style="text-decoration:line-through;color:var(--text-muted);">${o.name || '(無名)'}</span>
+              ${o.birthday ? `<span style="color:var(--text-muted);font-size:12px;margin-left:6px;">🎂 ${o.birthday}</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);">
+              消費 ${fmt(o.totalSpent||0)} · 積分 ${(o.points||0).toLocaleString()}
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      <!-- 合併後結果 -->
+      <div style="padding:12px 14px;background:linear-gradient(90deg,#f0fff4,#fff);border-top:2px solid #c8e6c9;">
+        <div style="font-size:12px;color:#2e7d32;font-weight:700;margin-bottom:4px;">✓ 合併後 ${g.primary.name || '(無名)'}</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+          <div>累計消費：<strong>${fmt(g.mergedTotalSpent)}</strong>${spentDelta>0?` <span style="color:var(--success);font-size:11px;">(+${fmt(spentDelta)})</span>`:''}</div>
+          <div>積分：<strong>${g.mergedPoints.toLocaleString()}</strong>${pointsDelta>0?` <span style="color:var(--success);font-size:11px;">(+${pointsDelta.toLocaleString()})</span>`:''}</div>
+          ${g.txCount ? `<div style="color:var(--gold);">🩹 搬遷 ${g.txCount} 筆交易</div>` : ''}
+          ${g.heldCount ? `<div style="color:var(--gold);">🩹 搬遷 ${g.heldCount} 筆掛單</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('merge-preview-modal').classList.add('open');
+}
+
+// 🔗 整合重複會員：第二步 - 從預覽 modal 按「確認合併」後真正執行
+function commitMemberMerge() {
+  const duplicates = _pendingMergeGroups;
+  if (!duplicates) return;
   let mergedCount = 0;
-  let totalReassignedTx = 0;   // 🩹 搬遷過去的交易數
-  let totalReassignedHeld = 0; // 🩹 搬遷過去的掛單數
+  let totalReassignedTx = 0;
+  let totalReassignedHeld = 0;
   duplicates.forEach(([phoneKey, arr]) => {
     // 依 joinedAt 或 id 排序（最舊的當主）
     arr.sort((a, b) => {
@@ -7811,6 +7917,8 @@ function mergeDuplicateMembers() {
     ? ` · 搬遷 ${totalReassignedTx} 筆交易${totalReassignedHeld?` + ${totalReassignedHeld} 筆掛單`:''}`
     : '';
   toast(`✓ 已整合 ${duplicates.length} 組會員，刪除 ${mergedCount} 筆重複${reassignMsg}`, 'success');
+  _pendingMergeGroups = null;
+  closeModal('merge-preview-modal');
 }
 
 // 自動匯入新客戶為會員（電話當識別碼）
