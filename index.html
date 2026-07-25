@@ -1410,6 +1410,33 @@
 
 <!-- Member Modal -->
 <!-- 🔗 整合重複會員 - 預覽確認 modal -->
+<!-- 💰 線上訂單「已付款」時的付款方式選擇 modal -->
+<div class="modal-overlay" id="pay-method-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <h3>💰 選擇付款方式</h3>
+      <button class="modal-close" onclick="pmChoose(null)">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="pm-order-info" style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:var(--text-muted);"></div>
+      <div style="display:grid;grid-template-columns:1fr;gap:10px;">
+        <button class="btn" onclick="pmChoose('cash')" style="padding:16px;background:#fff5e6;border:2px solid #ffb84d;color:#8B6F47;font-size:16px;font-weight:700;text-align:left;">
+          💵 現金 <span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">（到店付現）</span>
+        </button>
+        <button class="btn" onclick="pmChoose('transfer')" style="padding:16px;background:#e8f4fd;border:2px solid #5aa8e0;color:#2d5a87;font-size:16px;font-weight:700;text-align:left;">
+          📲 匯款 <span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">（銀行轉帳）</span>
+        </button>
+        <button class="btn" onclick="pmChoose('line')" style="padding:16px;background:#e8f8ea;border:2px solid #00B900;color:#006600;font-size:16px;font-weight:700;text-align:left;">
+          🟢 LINE Pay <span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">（掃 QR 收款）</span>
+        </button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="pmChoose(null)">取消</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="merge-preview-modal">
   <div class="modal" style="max-width:720px;">
     <div class="modal-head">
@@ -2655,7 +2682,7 @@ function setMember(m) {
   const inp = document.getElementById('member-search-input');
   const badge = document.getElementById('member-badge');
   if (m) {
-    inp.value = m.name + '　' + m.phone;
+    inp.value = m.name + '　' + formatPhoneDisplay(m.phone);
     inp.style.borderColor = 'var(--gold)';
     const tier = getMemberTier(m.totalSpent);
     badge.textContent = tier + ' · ' + m.points + 'pt';
@@ -2713,7 +2740,7 @@ function onMemberSearchInput() {
       <div style="width:32px;height:32px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--gold);font-weight:700;flex-shrink:0;">${m.name[0]}</div>
       <div style="flex:1;min-width:0;">
         <div style="font-weight:600;">${m.name} <span class="mc-tier ${tc}" style="font-size:10px;">${tier}</span></div>
-        <div style="font-size:11px;color:var(--text-muted);">${m.phone}　${m.points}pt</div>
+        <div style="font-size:11px;color:var(--text-muted);">${formatPhoneDisplay(m.phone)}　${m.points}pt</div>
       </div>
     </div>`;
   }).join('');
@@ -4734,7 +4761,7 @@ function renderMemberCards() {
         <div class="mc-avatar">${m.name[0]}</div>
         <div class="mc-info">
           <div class="mc-name">${m.name}<span class="mc-tier ${tc}">${tier}</span></div>
-          <div class="mc-phone">📱 ${m.phone}</div>
+          <div class="mc-phone">📱 ${formatPhoneDisplay(m.phone)}</div>
           ${m.barcode ? `<div class="mc-phone" style="font-family:monospace;">🏷 ${m.barcode}</div>` : ''}
           ${m.birthday ? `<div class="mc-phone">🎂 ${m.birthday}</div>` : ''}
         </div>
@@ -7443,6 +7470,7 @@ async function loadOnlineOrders(manual) {
       if (typeof o.items === 'string') {
         try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
       }
+      mergeOrderCancelState(o); // ★ 合併本地的單品項取消狀態
       return o;
     });
     // 依時間反排（新的在前）
@@ -7526,6 +7554,7 @@ function startOoPolling() {
           if (typeof o.items === 'string') {
             try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
           }
+          mergeOrderCancelState(o); // ★ 合併本地的單品項取消狀態
           return o;
         });
         onlineOrders.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -7723,6 +7752,21 @@ async function saveBanners() {
 }
 
 // 電話正規化（後 9 碼）— 解決 "0912345678" vs 數字 912345678 的比對問題
+// 📱 顯示層：確保手機號帶前導 0（Google Sheet 有時會把 0912345678 吃成 912345678）
+// 資料層不動，只在畫面上補回。9 碼開頭 9 → 補 0；其他形式保持原樣
+function formatPhoneDisplay(p) {
+  if (p == null) return '';
+  const raw = String(p).trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  // 台灣手機：9 碼且開頭是 9 → 補 0 變 10 碼
+  if (digits.length === 9 && digits[0] === '9') {
+    // 保留原始的分隔符（例如 -），把補上的 0 加在最前面
+    return '0' + raw;
+  }
+  return raw;
+}
+
 function normalizePhoneForMatch(p) {
   const digits = String(p == null ? '' : p).replace(/\D/g, '');
   return digits.slice(-9);
@@ -8034,12 +8078,25 @@ function renderOrderCard(o) {
 
   // 商品清單
   const items = Array.isArray(o.items) ? o.items : [];
-  const itemsHtml = items.slice(0, 6).map(i =>
-    `<div class="oo-item-row">
-      <span class="oo-item-name">${escapeHtmlOO(i.name || '')} × ${i.qty || 1}<br><span style="font-size:10px;color:var(--text-muted);">${escapeHtmlOO(i.color || '')}/${escapeHtmlOO(i.size || '')}</span></span>
+  const cancelledIdxs = o.cancelledItemIdxs || getCancelledIdxs(o.orderNo);
+  const cancelable = o.status !== 'cancelled' && o.status !== 'completed'; // 已完成/已取消訂單不能再動品項
+  const itemsHtml = items.slice(0, 6).map((i, idx) => {
+    const isCancelled = cancelledIdxs.includes(idx);
+    const rowStyle = isCancelled ? 'opacity:0.5;text-decoration:line-through;' : '';
+    const btn = cancelable ? `<button class="oo-item-cancel-btn" onclick="toggleCancelOrderItem('${escapeAttrOO(o.orderNo)}', ${idx})" title="${isCancelled?'恢復此項':'取消此項'}" style="background:none;border:1px solid ${isCancelled?'var(--success)':'#ddd'};color:${isCancelled?'var(--success)':'#999'};border-radius:6px;width:26px;height:26px;font-size:12px;cursor:pointer;margin-left:6px;line-height:1;">${isCancelled?'↩':'✕'}</button>` : '';
+    return `<div class="oo-item-row" style="${rowStyle}display:flex;align-items:center;">
+      <span class="oo-item-name" style="flex:1;">${escapeHtmlOO(i.name || '')} × ${i.qty || 1}<br><span style="font-size:10px;color:var(--text-muted);">${escapeHtmlOO(i.color || '')}/${escapeHtmlOO(i.size || '')}</span></span>
       <span class="oo-item-price">$${((i.price || 0) * (i.qty || 1)).toLocaleString()}</span>
-    </div>`
-  ).join('') + (items.length > 6 ? `<div class="oo-item-row" style="justify-content:center;color:var(--text-muted);font-size:11px;">…等 ${items.length} 件</div>` : '');
+      ${btn}
+    </div>`;
+  }).join('') + (items.length > 6 ? `<div class="oo-item-row" style="justify-content:center;color:var(--text-muted);font-size:11px;">…等 ${items.length} 件</div>` : '');
+
+  // 有效小計（排除已取消單品項）
+  const effectiveSubtotal = items.reduce((s, it, idx) =>
+    cancelledIdxs.includes(idx) ? s : s + (it.price || 0) * (it.qty || 1), 0
+  );
+  const effectiveTotal = effectiveSubtotal + (o.shippingFee || 0);
+  const hasCancelledItems = cancelledIdxs.length > 0;
 
   // 配送資訊
   let shippingInfo = escapeHtmlOO(o.shippingLabel || '');
@@ -8063,7 +8120,7 @@ function renderOrderCard(o) {
         <div class="oo-customer">
           <div>
             <span class="oo-customer-name">${escapeHtmlOO(o.name || '')}</span>${memberBadge}
-            <div class="oo-customer-phone">${escapeHtmlOO(o.phone || '')}</div>
+            <div class="oo-customer-phone">${escapeHtmlOO(formatPhoneDisplay(o.phone || ''))}</div>
             ${o.lineId ? `<div style="font-size:11px;color:#00B900;font-weight:600;margin-top:2px;">💬 LINE：${escapeHtmlOO(o.lineId)}</div>` : ''}
           </div>
           ${o.birthday ? `<div style="font-size:11px;color:var(--text-muted);">🎂 ${escapeHtmlOO(o.birthday)}</div>` : ''}
@@ -8076,9 +8133,9 @@ function renderOrderCard(o) {
         <div class="oo-total">
           <div>
             <span class="oo-total-label">應收</span>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(o.subtotal || 0).toLocaleString()}${o.shippingFee ? ` + 運費 $${o.shippingFee}` : ''}${o.freeShippingApplied ? ' (免運)' : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(hasCancelledItems ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${o.shippingFee ? ` + 運費 $${o.shippingFee}` : ''}${o.freeShippingApplied ? ' (免運)' : ''}${hasCancelledItems ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()} · 取消 ${cancelledIdxs.length} 項)</span>` : ''}</div>
           </div>
-          <div class="oo-total-amount"><span class="curr">$</span>${(o.total || 0).toLocaleString()}</div>
+          <div class="oo-total-amount"><span class="curr">$</span>${(hasCancelledItems ? effectiveTotal : (o.total || 0)).toLocaleString()}</div>
         </div>
         <div class="oo-actions">
           ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
@@ -8103,18 +8160,258 @@ function getNextStatus(current) {
   return OO_STATUS_ORDER[idx + 1];
 }
 
+// 💰 打開付款方式選擇 modal，回傳 Promise（resolve 為 'cash'|'transfer'|'line' 或 null 取消）
+let _payMethodResolver = null;
+function pickPaymentMethod(order) {
+  const info = document.getElementById('pm-order-info');
+  if (info) {
+    info.innerHTML = `訂單 <strong>${order.orderNo}</strong> · ${order.name || ''}<br>應收 <strong style="color:var(--gold);font-size:16px;">$${(order.total || 0).toLocaleString()}</strong>`;
+  }
+  document.getElementById('pay-method-modal').classList.add('open');
+  return new Promise(resolve => { _payMethodResolver = resolve; });
+}
+
+function pmChoose(method) {
+  document.getElementById('pay-method-modal').classList.remove('open');
+  if (_payMethodResolver) {
+    _payMethodResolver(method);
+    _payMethodResolver = null;
+  }
+}
+
 async function advanceOrderStatus(orderNo) {
   const order = onlineOrders.find(o => o.orderNo === orderNo);
   if (!order) return;
   const next = getNextStatus(order.status || 'unpaid');
   if (!next) return;
-  if (!confirm(`確定將訂單 ${orderNo} 標記為「${OO_STATUS_LABELS[next]}」？`)) return;
+
+  // 💰 推進到「已付款」時，先問付款方式
+  if (next === 'paid') {
+    const picked = await pickPaymentMethod(order);
+    if (!picked) return; // 使用者取消
+    order.actualPayMethod = picked;
+  } else {
+    if (!confirm(`確定將訂單 ${orderNo} 標記為「${OO_STATUS_LABELS[next]}」？`)) return;
+  }
   await updateOrderStatusRemote(orderNo, next);
 }
 
 async function cancelOrder(orderNo) {
   if (!confirm(`確定取消訂單 ${orderNo}？此動作無法還原`)) return;
   await updateOrderStatusRemote(orderNo, 'cancelled');
+}
+
+// ============================================================
+// 🔗 線上訂單 → 庫存/報表 聯動系統
+// ============================================================
+// 已付款/已出貨/已完成 = 已 commit（扣庫存 + 進報表）
+// 待付款/已取消 = 未 commit
+// sourceOrderNo 綁定 tx <-> 訂單；本地 cancelledItemIdxs 記錄哪些項被取消
+
+const COMMITTED_STATUSES = ['paid', 'shipped', 'completed'];
+
+// 本地儲存：每筆訂單被單品項取消的 index 陣列
+let orderCancelledItems = load('pos_order_cancel_items', {});
+
+function getCancelledIdxs(orderNo) {
+  return Array.isArray(orderCancelledItems[orderNo]) ? orderCancelledItems[orderNo] : [];
+}
+
+function setCancelledIdxs(orderNo, arr) {
+  if (arr && arr.length) orderCancelledItems[orderNo] = arr;
+  else delete orderCancelledItems[orderNo];
+  save('pos_order_cancel_items', orderCancelledItems);
+}
+
+// 把本地取消狀態合併回訂單物件（onlineOrders 重新載入時呼叫）
+function mergeOrderCancelState(order) {
+  if (!order || !order.orderNo) return order;
+  order.cancelledItemIdxs = getCancelledIdxs(order.orderNo);
+  return order;
+}
+
+// 有效商品（排除被取消的）
+function getEffectiveItems(order) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const cancelled = order.cancelledItemIdxs || getCancelledIdxs(order.orderNo);
+  return items
+    .map((it, idx) => ({ item: it, idx }))
+    .filter(x => !cancelled.includes(x.idx));
+}
+
+// 訂單是否已 commit（用 tx 有沒有 sourceOrderNo === orderNo 判斷）
+function isOrderCommitted(orderNo) {
+  return transactions.some(t => t.sourceOrderNo === orderNo);
+}
+
+// 訂單狀態是否應該 commit
+function statusShouldCommit(status) {
+  return COMMITTED_STATUSES.includes(status);
+}
+
+// 扣庫存（單筆訂單的所有有效商品）
+function deductOrderStock(order) {
+  getEffectiveItems(order).forEach(({ item: it }) => {
+    if (it.productId) deductStock(it.productId, it.color || '', it.size || '', it.qty || 1);
+  });
+  save('pos_products', products);
+}
+
+// 還原庫存（單筆訂單的所有有效商品）
+function restoreOrderStock(order) {
+  getEffectiveItems(order).forEach(({ item: it }) => {
+    if (!it.productId) return;
+    const p = products.find(x => x.id === it.productId);
+    if (!p) return;
+    const qty = it.qty || 1;
+    if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+      const key = (it.color || '') + '|' + (it.size || '');
+      p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + qty;
+      p.stock = calcStockTotal(p.stockMap);
+    } else {
+      p.stock = (p.stock || 0) + qty;
+    }
+  });
+  save('pos_products', products);
+}
+
+// 由訂單建立/重建 transaction（重建就是取消原本的再建一次）
+function upsertOrderTx(order) {
+  // 先移除既有的
+  const idx = transactions.findIndex(t => t.sourceOrderNo === order.orderNo);
+  if (idx >= 0) transactions.splice(idx, 1);
+
+  const effective = getEffectiveItems(order);
+  if (effective.length === 0) { save('pos_transactions', transactions); return; }
+
+  const subtotal = effective.reduce((s, x) => s + (x.item.price || 0) * (x.item.qty || 1), 0);
+  const total = subtotal + (order.shippingFee || 0);
+
+  // 找對應會員（用手機號比對）
+  const member = members.find(m => normalizePhoneForMatch(m.phone) === normalizePhoneForMatch(order.phone));
+
+  // 時間用 createdAt / paidAt / 現在（優先次序）
+  const dateSource = order.paidAt || order.createdAt || new Date().toISOString();
+  const d = new Date(dateSource);
+
+  const tx = {
+    id: uid(),
+    sourceOrderNo: order.orderNo, // ★ 綁定：讓後續好找、好刪
+    date: d.toLocaleDateString('zh-TW') + ' ' + d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' }),
+    dateIso: d.toISOString(),
+    memberId: member?.id || '',
+    memberName: member?.name || order.name || '線上訂單',
+    items: effective.map(x => {
+      const it = x.item;
+      const prod = products.find(pr => pr.id === it.productId);
+      return {
+        productId: it.productId,
+        name: it.name + (it.color ? ' (' + it.color : '') + (it.size ? ' ' + it.size : '') + (it.color || it.size ? ')' : ''),
+        qty: it.qty || 1,
+        price: it.price || 0,
+        cost: prod?.cost || 0,
+      };
+    }),
+    subtotal,
+    discount: 0,
+    couponDiscount: 0,
+    memberDiscount: 0,
+    total,
+    payMethod: order.actualPayMethod || 'line', // 用選定的付款方式，沒選則預設 LINE Pay
+    pointsEarned: 0,
+    note: '📮 ' + order.orderNo,
+    cashReceived: 0,
+    change: 0,
+    isSelfUse: false,
+  };
+  transactions.unshift(tx);
+  save('pos_transactions', transactions);
+}
+
+function removeOrderTx(orderNo) {
+  const idx = transactions.findIndex(t => t.sourceOrderNo === orderNo);
+  if (idx >= 0) {
+    transactions.splice(idx, 1);
+    save('pos_transactions', transactions);
+  }
+}
+
+// 狀態切換時的自動 reconcile：should commit vs actually committed，把差距補上
+function reconcileOrder(order, oldStatus, newStatus) {
+  const wasCommitted = statusShouldCommit(oldStatus);
+  const shouldCommit = statusShouldCommit(newStatus);
+  const actuallyCommitted = isOrderCommitted(order.orderNo);
+
+  // 舊資料保護：如果 oldStatus 已經在 committed 狀態但沒有 tx 存在
+  // 表示是這次功能推出前的訂單 → 「祖父級」不動它
+  const isLegacy = wasCommitted && !actuallyCommitted;
+
+  if (shouldCommit && !actuallyCommitted && !isLegacy) {
+    // uncommitted → committed：扣庫存 + 建 tx
+    deductOrderStock(order);
+    upsertOrderTx(order);
+    return { action: 'commit' };
+  }
+  if (!shouldCommit && actuallyCommitted) {
+    // committed → uncommitted：還原庫存 + 刪 tx
+    restoreOrderStock(order);
+    removeOrderTx(order.orderNo);
+    return { action: 'restore' };
+  }
+  return { action: 'none' };
+}
+
+// 單品項取消（or 恢復）
+function toggleCancelOrderItem(orderNo, itemIdx) {
+  const order = onlineOrders.find(o => o.orderNo === orderNo);
+  if (!order) return;
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (itemIdx < 0 || itemIdx >= items.length) return;
+
+  const cancelled = getCancelledIdxs(orderNo);
+  const it = items[itemIdx];
+  const isCancelling = !cancelled.includes(itemIdx);
+  const label = `${it.name} × ${it.qty || 1}`;
+
+  if (isCancelling) {
+    if (!confirm(`確定取消此單品項？\n\n${label}${isOrderCommitted(orderNo) ? '\n\n將自動還原庫存並更新報表' : ''}`)) return;
+    cancelled.push(itemIdx);
+  } else {
+    if (!confirm(`要恢復此單品項嗎？\n\n${label}${isOrderCommitted(orderNo) ? '\n\n將自動再扣庫存並更新報表' : ''}`)) return;
+    cancelled.splice(cancelled.indexOf(itemIdx), 1);
+  }
+  setCancelledIdxs(orderNo, cancelled);
+  order.cancelledItemIdxs = cancelled;
+
+  // 如訂單已 commit → 動態調整庫存和 tx
+  if (isOrderCommitted(orderNo)) {
+    if (isCancelling) {
+      // 還原這一項的庫存
+      if (it.productId) {
+        const p = products.find(x => x.id === it.productId);
+        if (p) {
+          const qty = it.qty || 1;
+          if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+            const key = (it.color || '') + '|' + (it.size || '');
+            p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + qty;
+            p.stock = calcStockTotal(p.stockMap);
+          } else {
+            p.stock = (p.stock || 0) + qty;
+          }
+          save('pos_products', products);
+        }
+      }
+    } else {
+      // 重新扣這一項的庫存
+      if (it.productId) deductStock(it.productId, it.color || '', it.size || '', it.qty || 1);
+      save('pos_products', products);
+    }
+    // 重建這張訂單的 tx（用最新的有效商品）
+    upsertOrderTx(order);
+  }
+
+  renderOnlineOrders();
+  toast(isCancelling ? `已取消：${label}` : `已恢復：${label}`, isCancelling ? 'warn' : 'success');
 }
 
 async function updateOrderStatusRemote(orderNo, newStatus) {
@@ -8128,12 +8425,21 @@ async function updateOrderStatusRemote(orderNo, newStatus) {
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '更新失敗');
-    // 更新本地
+    // 更新本地 + 呼叫 reconcile 觸發庫存/報表聯動
     const order = onlineOrders.find(o => o.orderNo === orderNo);
-    if (order) order.status = newStatus;
+    let reconcileMsg = '';
+    if (order) {
+      const oldStatus = order.status || 'unpaid';
+      order.status = newStatus;
+      // 記錄付款時間（給 tx 用）
+      if (newStatus === 'paid' && !order.paidAt) order.paidAt = new Date().toISOString();
+      const result = reconcileOrder(order, oldStatus, newStatus);
+      if (result.action === 'commit') reconcileMsg = ' · ✅ 已扣庫存 + 進報表';
+      else if (result.action === 'restore') reconcileMsg = ' · ↩️ 已還原庫存 + 從報表移除';
+    }
     renderOnlineOrders();
     updateOnlineOrdersBadge();
-    toast(`訂單 ${orderNo} 已更新為「${OO_STATUS_LABELS[newStatus]}」`, 'success');
+    toast(`訂單 ${orderNo} → 「${OO_STATUS_LABELS[newStatus]}」${reconcileMsg}`, 'success');
   } catch (err) {
     console.error(err);
     toast('更新失敗：' + err.message, 'error');
@@ -8148,7 +8454,7 @@ function showOrderDetail(orderNo) {
   alert(
     `訂單 ${o.orderNo}\n` +
     `狀態：${OO_STATUS_LABELS[o.status] || o.status}\n\n` +
-    `客戶：${o.name}\n電話：${o.phone}\n${o.birthday ? '生日：' + o.birthday + '\n' : ''}${o.lineId ? 'LINE ID：' + o.lineId + '\n' : ''}\n` +
+    `客戶：${o.name}\n電話：${formatPhoneDisplay(o.phone)}\n${o.birthday ? '生日：' + o.birthday + '\n' : ''}${o.lineId ? 'LINE ID：' + o.lineId + '\n' : ''}\n` +
     `配送：${o.shippingLabel}\n${o.shippingMethod === 'convenience_store' ? `${o.cvsBrand || ''} ${o.cvsStoreCode || '(未填店號)'} ${o.cvsStoreName || '(未填店名)'}\n` : ''}${o.address ? o.postalCode + ' ' + o.address + '\n' : ''}\n` +
     `商品：\n${itemsText}\n\n` +
     `小計：$${(o.subtotal || 0).toLocaleString()}\n運費：$${o.shippingFee || 0}${o.freeShippingApplied ? ' (免運)' : ''}\n總計：$${(o.total || 0).toLocaleString()}\n\n` +
