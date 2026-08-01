@@ -8476,6 +8476,7 @@ async function openOrderChat(orderNo) {
   if (messagesEl) messagesEl.innerHTML = '<div style="text-align:center;color:#999;font-size:12px;padding:40px 20px;">載入中...</div>';
   if (input) input.value = '';
   modal.style.display = 'flex';
+  renderQuickReplyChips(); // 💬 渲染罐頭訊息 chip 排
   await loadStaffChatMessages();
   // 標記已讀 → 徽章消失
   markOrderRead(orderNo);
@@ -8517,23 +8518,173 @@ function renderStaffChatMessages() {
   }
   el.innerHTML = currentChatMessages.map(m => {
     const isStaff = m.sender === 'staff';
-    const time = m.timestampLocal || (m.timestamp ? new Date(m.timestamp).toLocaleString('zh-TW') : '');
+    const time = m.timestampLocal || (m.timestamp ? new Date(m.timestamp).toLocaleString('zh-TW') : '') || (m.createdAt ? new Date(m.createdAt).toLocaleString('zh-TW') : '');
     const align = isStaff ? 'flex-end' : 'flex-start';
-    const bubbleBg = isStaff ? 'var(--primary)' : '#fff';
-    const bubbleColor = isStaff ? 'var(--gold)' : 'var(--text)';
+    const isSending = m._status === 'sending';
+    const isFailed  = m._status === 'failed';
+    const bubbleBg = isStaff ? (isFailed ? '#d9534f' : 'var(--primary)') : '#fff';
+    const bubbleColor = isStaff ? (isFailed ? '#fff' : 'var(--gold)') : 'var(--text)';
     const bubbleBorder = isStaff ? 'none' : '1px solid #e0d9cd';
     const radius = isStaff ? 'border-bottom-right-radius:4px;' : 'border-bottom-left-radius:4px;';
+    const opacity = isSending ? 'opacity:0.65;' : '';
+    // 狀態指示：sending / failed / done
+    let statusHtml = '';
+    if (isStaff) {
+      if (isSending) statusHtml = '<span style="font-size:10px;color:#999;margin-left:4px;">傳送中…</span>';
+      else if (isFailed) statusHtml = `<span style="font-size:10px;color:#d9534f;margin-left:4px;cursor:pointer;text-decoration:underline;" onclick="retryFailedMessage('${m.id}')">⚠ 送出失敗，點此重試</span>`;
+      else if (m.id && String(m.id).startsWith('temp_')) statusHtml = '<span style="font-size:10px;color:#5cb85c;margin-left:4px;">✓ 已送出</span>';
+    }
     return `
-      <div style="display:flex;justify-content:${align};margin:8px 4px;">
+      <div style="display:flex;justify-content:${align};margin:8px 4px;${opacity}">
         <div style="max-width:78%;display:flex;flex-direction:column;align-items:${align === 'flex-end' ? 'flex-end' : 'flex-start'};">
           <div style="font-size:10px;color:#999;margin-bottom:2px;padding:0 6px;">${escapeHtmlOO(m.senderName || (isStaff ? '老闆' : '客戶'))}</div>
           <div style="padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.5;background:${bubbleBg};color:${bubbleColor};border:${bubbleBorder};${radius};word-wrap:break-word;white-space:pre-wrap;">${escapeHtmlOO(m.content || '')}</div>
-          <div style="font-size:10px;color:#999;margin-top:3px;padding:0 6px;">${escapeHtmlOO(time)}</div>
+          <div style="font-size:10px;color:#999;margin-top:3px;padding:0 6px;">${escapeHtmlOO(time)}${statusHtml}</div>
         </div>
       </div>
     `;
   }).join('');
   el.scrollTop = el.scrollHeight;
+}
+
+// ⏱ 帶超時的 fetch 包裝：Apps Script 若掛掉/卡住，超過 timeoutMs 就終止並拋錯
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error('連線超時，伺服器沒回應');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ============================================================
+// 💬 對話罐頭訊息（快速回覆）
+// ============================================================
+const QUICK_REPLIES_KEY = 'pos_chat_quick_replies';
+const DEFAULT_QUICK_REPLIES = [
+  '已收到訂單，明日出貨 🚚',
+  '請問您方便到店取貨的時間？',
+  '已出貨囉～單號稍後補上 📦',
+  '感謝購買，收到請確認商品狀況 🌸',
+  '不好意思，此款目前缺貨',
+];
+
+function loadQuickReplies() {
+  try {
+    const raw = localStorage.getItem(QUICK_REPLIES_KEY);
+    if (!raw) return [...DEFAULT_QUICK_REPLIES];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [...DEFAULT_QUICK_REPLIES];
+  } catch (e) {
+    return [...DEFAULT_QUICK_REPLIES];
+  }
+}
+
+function saveQuickReplies(arr) {
+  try { localStorage.setItem(QUICK_REPLIES_KEY, JSON.stringify(arr)); } catch (e) {}
+}
+
+let quickReplies = loadQuickReplies();
+
+// 在 chat modal 的 chip 排渲染罐頭訊息
+function renderQuickReplyChips() {
+  const el = document.getElementById('quickReplyChips');
+  if (!el) return;
+  if (quickReplies.length === 0) {
+    el.innerHTML = '<span style="color:#999;font-size:11px;padding:6px 10px;">尚無罐頭訊息，按 ⚙ 新增</span>';
+    return;
+  }
+  el.innerHTML = quickReplies.map((text, i) => `
+    <button onclick="insertQuickReply(${i})" title="${escapeHtmlOO(text)}" style="
+      flex-shrink:0;background:#fff;border:1px solid #d4c9b5;color:var(--primary);
+      padding:6px 12px;border-radius:14px;font-size:12px;cursor:pointer;
+      white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;
+      font-family:inherit;
+    ">${escapeHtmlOO(text.length > 20 ? text.slice(0, 20) + '…' : text)}</button>
+  `).join('');
+}
+
+function insertQuickReply(idx) {
+  const text = quickReplies[idx];
+  if (!text) return;
+  const input = document.getElementById('chatModalInput');
+  if (!input) return;
+  // 空的直接填；有內容的就 append（用空格分隔）
+  input.value = input.value.trim() ? input.value.trim() + ' ' + text : text;
+  input.focus();
+}
+
+// 罐頭管理 modal
+function openQuickReplyManager() {
+  const modal = document.getElementById('quickReplyModal');
+  if (!modal) return;
+  renderQuickReplyList();
+  modal.classList.add('open');
+}
+
+function closeQuickReplyManager() {
+  const modal = document.getElementById('quickReplyModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function renderQuickReplyList() {
+  const el = document.getElementById('quickReplyList');
+  if (!el) return;
+  if (quickReplies.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#999;padding:24px;font-size:13px;">尚無罐頭訊息</div>';
+    return;
+  }
+  el.innerHTML = quickReplies.map((text, i) => `
+    <div style="display:flex;gap:8px;align-items:center;padding:10px;background:#fafafa;border-radius:8px;margin-bottom:6px;">
+      <input type="text" value="${escapeHtmlOO(text)}" maxlength="200"
+        onchange="updateQuickReply(${i}, this.value)"
+        style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;">
+      <button onclick="deleteQuickReply(${i})" style="background:#f8d7da;border:1px solid #dc3545;color:#dc3545;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">刪除</button>
+    </div>
+  `).join('');
+}
+
+function updateQuickReply(idx, newText) {
+  const trimmed = (newText || '').trim();
+  if (!trimmed) { deleteQuickReply(idx); return; }
+  quickReplies[idx] = trimmed;
+  saveQuickReplies(quickReplies);
+  renderQuickReplyChips();
+}
+
+function deleteQuickReply(idx) {
+  quickReplies.splice(idx, 1);
+  saveQuickReplies(quickReplies);
+  renderQuickReplyList();
+  renderQuickReplyChips();
+}
+
+function addQuickReply() {
+  const input = document.getElementById('quickReplyNewInput');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) { toast('請輸入內容', 'warn'); return; }
+  quickReplies.push(text);
+  saveQuickReplies(quickReplies);
+  input.value = '';
+  renderQuickReplyList();
+  renderQuickReplyChips();
+  toast('已新增 ✓', 'success');
+}
+
+function resetQuickReplies() {
+  if (!confirm('確定重置為預設 5 條罐頭訊息？（你自訂的會被覆蓋）')) return;
+  quickReplies = [...DEFAULT_QUICK_REPLIES];
+  saveQuickReplies(quickReplies);
+  renderQuickReplyList();
+  renderQuickReplyChips();
+  toast('已重置為預設 ✓', 'success');
 }
 
 async function sendStaffMessage() {
@@ -8543,10 +8694,24 @@ async function sendStaffMessage() {
   const input = document.getElementById('chatModalInput');
   const content = input.value.trim();
   if (!content) return;
-  const btn = document.getElementById('chatModalSendBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '送出中...'; }
+
+  // 🚀 樂觀更新：先在畫面上顯示訊息，再送 fetch
+  const tempId = 'temp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  const tempMsg = {
+    id: tempId,
+    orderNo: currentChatOrderNo,
+    sender: 'staff',
+    senderName: 'WanWan Selected',
+    content: content,
+    createdAt: new Date().toISOString(),
+    _status: 'sending', // 本地標記：sending | failed（無此欄位表示已成功/從伺服器來）
+  };
+  currentChatMessages.push(tempMsg);
+  input.value = ''; // 立刻清空
+  renderStaffChatMessages(); // 立刻顯示
+
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       body: JSON.stringify({
         action: 'addOrderMessage',
@@ -8558,18 +8723,37 @@ async function sendStaffMessage() {
         },
       }),
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    });
+    }, 20000);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '送出失敗');
-    input.value = '';
-    await loadStaffChatMessages();
-    toast('訊息已送出 ✓', 'success');
+
+    // 成功：把暫存訊息標成已送達（等下次 loadStaffChatMessages 會把它換成正式的）
+    const t = currentChatMessages.find(m => m.id === tempId);
+    if (t) delete t._status;
+    renderStaffChatMessages();
+
+    // 背景刷新一下（不 await，不擋 UI）——把暫存的換成伺服器版本
+    loadStaffChatMessages().catch(() => {});
   } catch (err) {
     console.error(err);
-    toast('送出失敗：' + err.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '送出'; }
+    // 失敗：標記該訊息為失敗，讓使用者能重試
+    const t = currentChatMessages.find(m => m.id === tempId);
+    if (t) { t._status = 'failed'; t._content = content; }
+    renderStaffChatMessages();
+    toast('送出失敗：' + err.message + '（可點訊息重試）', 'error');
   }
+}
+
+// 點失敗的訊息重試
+async function retryFailedMessage(tempId) {
+  const t = currentChatMessages.find(m => m.id === tempId);
+  if (!t || t._status !== 'failed') return;
+  // 移除失敗那筆，把內容放回輸入框
+  currentChatMessages = currentChatMessages.filter(m => m.id !== tempId);
+  const input = document.getElementById('chatModalInput');
+  if (input) input.value = t._content || t.content || '';
+  renderStaffChatMessages();
+  input?.focus();
 }
 
 function getTimeAgo(iso) {
@@ -8636,9 +8820,40 @@ function escapeAttrOO(s) { return escapeHtmlOO(s).replace(/'/g, '&#39;'); }
     <div id="chatModalMessages" style="flex:1;overflow-y:auto;padding:12px;background:#f8f5f0;min-height:250px;max-height:60vh;">
       <div style="text-align:center;color:#999;font-size:12px;padding:40px 20px;">載入中...</div>
     </div>
+    <!-- 💬 罐頭訊息 chip 排 -->
+    <div style="padding:8px 12px;border-top:1px solid #eee;background:#faf7f2;display:flex;align-items:center;gap:6px;">
+      <div id="quickReplyChips" style="flex:1;display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;"></div>
+      <button onclick="openQuickReplyManager()" title="管理罐頭訊息" style="flex-shrink:0;background:#fff;border:1px solid #ccc;color:#666;width:30px;height:30px;border-radius:15px;cursor:pointer;font-size:13px;">⚙</button>
+    </div>
     <div style="padding:10px 14px;border-top:1px solid #eee;display:flex;gap:6px;">
       <input type="text" id="chatModalInput" placeholder="回覆客戶..." maxlength="500" style="flex:1;padding:9px 12px;border:1px solid #ddd;border-radius:18px;font-size:13px;font-family:inherit;" onkeydown="if(event.key==='Enter'){event.preventDefault();sendStaffMessage();}">
       <button onclick="sendStaffMessage()" id="chatModalSendBtn" class="btn btn-primary" style="padding:8px 16px;border-radius:18px;font-size:13px;">送出</button>
+    </div>
+  </div>
+</div>
+
+<!-- 💬 罐頭訊息管理 Modal -->
+<div class="modal-overlay" id="quickReplyModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3>💬 罐頭訊息管理</h3>
+      <button class="modal-close" onclick="closeQuickReplyManager()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text-muted);line-height:1.6;">
+        📌 點下方 chip 可直接填進輸入框；管理常用回覆語，減少每次打字
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:14px;">
+        <input type="text" id="quickReplyNewInput" placeholder="新增一句罐頭訊息…" maxlength="200"
+          style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;"
+          onkeydown="if(event.key==='Enter'){addQuickReply();}">
+        <button onclick="addQuickReply()" class="btn btn-primary" style="padding:8px 14px;font-size:13px;">＋ 新增</button>
+      </div>
+      <div id="quickReplyList" style="max-height:50vh;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline btn-sm" onclick="resetQuickReplies()" style="margin-right:auto;">重置為預設</button>
+      <button class="btn btn-primary" onclick="closeQuickReplyManager()">完成</button>
     </div>
   </div>
 </div>
