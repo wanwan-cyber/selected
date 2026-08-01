@@ -994,6 +994,32 @@
             <button class="btn btn-primary" onclick="openProductModal()">＋ 新增商品</button>
           </div>
         </div>
+        <!-- 🔍 商品篩選工具列 -->
+        <div style="background:#faf7f2;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
+          <!-- 第一列：搜尋 + 廠商 + 排序 + 顯示件數 -->
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <input type="text" id="pm-filter-search" placeholder="🔍 搜尋商品名稱 / 款號 / 條碼"
+              oninput="applyPmFilters()"
+              style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;">
+            <select id="pm-filter-vendor" onchange="applyPmFilters()"
+              style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:#fff;">
+              <option value="">🏭 全部廠商</option>
+            </select>
+            <select id="pm-filter-sort" onchange="applyPmFilters()"
+              style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:#fff;">
+              <option value="default">📋 預設排序</option>
+              <option value="name">🔤 名稱 A→Z</option>
+              <option value="lowstock">📉 庫存少→多</option>
+              <option value="highstock">📈 庫存多→少</option>
+              <option value="pricelow">💰 價格低→高</option>
+              <option value="pricehigh">💰 價格高→低</option>
+            </select>
+            <span id="pm-filter-count" style="font-size:12px;color:var(--text-muted);white-space:nowrap;"></span>
+            <button class="btn btn-outline btn-sm" onclick="clearPmFilters()" style="font-size:12px;">✕ 清除</button>
+          </div>
+          <!-- 第二列：分類 chips -->
+          <div id="pm-filter-cats" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+        </div>
         <div class="table-wrap">
           <table class="data-table" id="products-table">
             <thead><tr>
@@ -2958,7 +2984,10 @@ function printReceipt() { window.print(); }
 // ======================== PRODUCTS MANAGEMENT ========================
 function renderProductsTable() {
   const tbody = document.getElementById('products-tbody');
-  tbody.innerHTML = products.map(p => {
+  // 🔍 套用篩選條件
+  const list = getFilteredProductsForPM();
+  updatePmFilterCount(list.length, products.length);
+  tbody.innerHTML = list.map(p => {
     const stock = getProductStock(p);
     const mainImg = (p.images && p.images.length) ? p.images[0] : (p.image || '');
     const imgCount = (p.images && p.images.length) || (p.image ? 1 : 0);
@@ -2995,6 +3024,124 @@ function renderProductsTable() {
       </td>
     </tr>
   `;}).join('') || '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted);">尚無商品</td></tr>';
+  // 順便更新篩選 UI（分類件數、廠商選項）
+  if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
+  if (typeof refreshPmFilterVendorOptions === 'function') refreshPmFilterVendorOptions();
+}
+
+// ============================================================
+// 🔍 商品管理頁的篩選 / 排序邏輯
+// ============================================================
+let pmFilters = {
+  search: '',
+  cat: '',       // '' = 全部
+  vendor: '',    // '' = 全部
+  sort: 'default',
+};
+
+function getFilteredProductsForPM() {
+  let list = [...products];
+  const s = (pmFilters.search || '').trim().toLowerCase();
+  if (s) {
+    list = list.filter(p =>
+      (p.name || '').toLowerCase().includes(s) ||
+      (p.sku || '').toLowerCase().includes(s) ||
+      (p.barcode || '').toLowerCase().includes(s)
+    );
+  }
+  if (pmFilters.cat) list = list.filter(p => (p.cat || '') === pmFilters.cat);
+  if (pmFilters.vendor) list = list.filter(p => (p.vendor || '') === pmFilters.vendor);
+  // 排序
+  switch (pmFilters.sort) {
+    case 'name':      list.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'zh-Hant')); break;
+    case 'lowstock':  list.sort((a,b) => getProductStock(a) - getProductStock(b)); break;
+    case 'highstock': list.sort((a,b) => getProductStock(b) - getProductStock(a)); break;
+    case 'pricelow':  list.sort((a,b) => (a.price||0) - (b.price||0)); break;
+    case 'pricehigh': list.sort((a,b) => (b.price||0) - (a.price||0)); break;
+    // default: 保持原本順序
+  }
+  return list;
+}
+
+function applyPmFilters() {
+  pmFilters.search = document.getElementById('pm-filter-search')?.value || '';
+  pmFilters.vendor = document.getElementById('pm-filter-vendor')?.value || '';
+  pmFilters.sort   = document.getElementById('pm-filter-sort')?.value || 'default';
+  renderProductsTable();
+  renderPmFilterCatChips(); // 更新 chip 上的件數
+}
+
+function clearPmFilters() {
+  pmFilters = { search: '', cat: '', vendor: '', sort: 'default' };
+  const s = document.getElementById('pm-filter-search'); if (s) s.value = '';
+  const v = document.getElementById('pm-filter-vendor'); if (v) v.value = '';
+  const o = document.getElementById('pm-filter-sort');   if (o) o.value = 'default';
+  renderPmFilterCatChips();
+  renderProductsTable();
+}
+
+function updatePmFilterCount(shown, total) {
+  const el = document.getElementById('pm-filter-count');
+  if (!el) return;
+  el.textContent = shown === total ? `共 ${total} 件` : `顯示 ${shown} / ${total} 件`;
+  el.style.color = shown < total ? 'var(--gold)' : 'var(--text-muted)';
+  el.style.fontWeight = shown < total ? '700' : '400';
+}
+
+// 渲染分類 chips（含件數）
+function renderPmFilterCatChips() {
+  const el = document.getElementById('pm-filter-cats');
+  if (!el) return;
+  // 蒐集各分類件數（先套用「除了分類以外」的其他篩選，這樣件數才會跟目前上下文一致）
+  const baseList = products.filter(p => {
+    const s = (pmFilters.search || '').trim().toLowerCase();
+    if (s && !((p.name||'').toLowerCase().includes(s) || (p.sku||'').toLowerCase().includes(s) || (p.barcode||'').toLowerCase().includes(s))) return false;
+    if (pmFilters.vendor && (p.vendor || '') !== pmFilters.vendor) return false;
+    return true;
+  });
+  const catCounts = {};
+  baseList.forEach(p => {
+    const c = p.cat || '未分類';
+    catCounts[c] = (catCounts[c] || 0) + 1;
+  });
+  const cats = Object.keys(catCounts).sort((a,b) => catCounts[b] - catCounts[a]);
+  const totalCount = baseList.length;
+  const isAll = !pmFilters.cat;
+  const chip = (label, count, value, active) => `
+    <button onclick="setPmFilterCat('${value.replace(/'/g,"\\'")}')" style="
+      padding:6px 12px;border-radius:14px;font-size:12px;cursor:pointer;font-family:inherit;
+      background:${active ? 'var(--gold)' : '#fff'};
+      color:${active ? '#fff' : 'var(--primary)'};
+      border:1px solid ${active ? 'var(--gold)' : 'var(--border)'};
+      font-weight:${active ? '700' : '500'};
+      white-space:nowrap;
+    ">${label} <span style="opacity:.75;font-size:11px;">${count}</span></button>
+  `;
+  el.innerHTML = chip('📁 全部', totalCount, '', isAll) +
+    cats.map(c => chip(c, catCounts[c], c, pmFilters.cat === c)).join('');
+}
+
+function setPmFilterCat(cat) {
+  pmFilters.cat = cat;
+  renderPmFilterCatChips();
+  renderProductsTable();
+}
+
+// 更新廠商下拉選單（新增/刪除商品時要重新載入）
+function refreshPmFilterVendorOptions() {
+  const sel = document.getElementById('pm-filter-vendor');
+  if (!sel) return;
+  const current = sel.value;
+  const vendors = [...new Set(products.map(p => p.vendor).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">🏭 全部廠商</option>' +
+    vendors.map(v => `<option value="${v}">${v}</option>`).join('');
+  sel.value = current; // 保留使用者的選擇
+}
+
+// 初始化：頁面載入完成後渲染一次篩選 UI
+function initPmFilters() {
+  refreshPmFilterVendorOptions();
+  renderPmFilterCatChips();
 }
 
 // 內部狀態：當前選中的分類（單一）、廠商（單一）、顏色/尺寸（多個）、庫存對應表
@@ -7421,6 +7568,7 @@ renderCatBar();
 renderProducts();
 populateMemberSelect();
 renderProductsTable();
+initPmFilters(); // 🔍 商品管理篩選 UI 初始化
 renderMemberCards();
 renderCoupons();
 calcTotals();
