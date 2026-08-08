@@ -8397,46 +8397,113 @@ function statusShouldCommit(status) {
   return COMMITTED_STATUSES.includes(status);
 }
 
-// 扣庫存（單筆訂單的所有有效商品）
+// 扣庫存（單筆訂單的所有有效商品）→ 回傳每項結果，讓呼叫端能反映失敗
+// 結果格式：{ success: bool, item, reason?, availableKeys? }
 function deductOrderStock(order) {
+  const results = [];
   getEffectiveItems(order).forEach(({ item: it }) => {
-    if (it.productId) deductStock(it.productId, it.color || '', it.size || '', it.qty || 1);
+    const qty = it.qty || 1;
+    if (!it.productId) {
+      results.push({ success: false, item: it, reason: '無商品編號' });
+      return;
+    }
+    const p = products.find(x => x.id === it.productId);
+    if (!p) {
+      results.push({ success: false, item: it, reason: '找不到商品資料' });
+      return;
+    }
+    const hasVariants = p.stockMap && Object.keys(p.stockMap).length > 0;
+    if (hasVariants) {
+      const key = (it.color || '') + '|' + (it.size || '');
+      if (!(key in p.stockMap)) {
+        // ★ key 對不上不建幽靈 key、不動 stock，回傳失敗讓 UI 顯示
+        results.push({
+          success: false,
+          item: it,
+          reason: `規格 ${it.color || '(無色)'}/${it.size || '(無尺)'} 對不上商品資料`,
+          availableKeys: Object.keys(p.stockMap),
+          productName: p.name,
+        });
+        return;
+      }
+      p.stockMap[key] = Math.max(0, (parseInt(p.stockMap[key]) || 0) - qty);
+      p.stock = calcStockTotal(p.stockMap);
+    } else {
+      p.stock = Math.max(0, (p.stock || 0) - qty);
+    }
+    results.push({ success: true, item: it, qty });
   });
   save('pos_products', products);
+  return results;
 }
 
-// 還原庫存（單筆訂單的所有有效商品）
+// 還原庫存（單筆訂單的所有有效商品）→ 同樣回傳結果
 function restoreOrderStock(order) {
+  const results = [];
   getEffectiveItems(order).forEach(({ item: it }) => {
-    if (!it.productId) return;
-    const p = products.find(x => x.id === it.productId);
-    if (!p) return;
     const qty = it.qty || 1;
-    if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+    if (!it.productId) {
+      results.push({ success: false, item: it, reason: '無商品編號' });
+      return;
+    }
+    const p = products.find(x => x.id === it.productId);
+    if (!p) {
+      results.push({ success: false, item: it, reason: '找不到商品資料' });
+      return;
+    }
+    const hasVariants = p.stockMap && Object.keys(p.stockMap).length > 0;
+    if (hasVariants) {
       const key = (it.color || '') + '|' + (it.size || '');
+      if (!(key in p.stockMap)) {
+        results.push({
+          success: false,
+          item: it,
+          reason: `規格 ${it.color || '(無色)'}/${it.size || '(無尺)'} 對不上商品資料`,
+          availableKeys: Object.keys(p.stockMap),
+          productName: p.name,
+        });
+        return;
+      }
       p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + qty;
       p.stock = calcStockTotal(p.stockMap);
     } else {
       p.stock = (p.stock || 0) + qty;
     }
+    results.push({ success: true, item: it, qty });
   });
   save('pos_products', products);
+  return results;
 }
 
 // 由訂單建立/重建 transaction（重建就是取消原本的再建一次）
 function upsertOrderTx(order) {
-  // 先移除既有的
+  // 先取出舊 tx（如果有）→ 用來反算會員貢獻
   const idx = transactions.findIndex(t => t.sourceOrderNo === order.orderNo);
+  const oldTx = idx >= 0 ? transactions[idx] : null;
   if (idx >= 0) transactions.splice(idx, 1);
 
   const effective = getEffectiveItems(order);
-  if (effective.length === 0) { save('pos_transactions', transactions); return; }
-
-  const subtotal = effective.reduce((s, x) => s + (x.item.price || 0) * (x.item.qty || 1), 0);
-  const total = subtotal + (order.shippingFee || 0);
 
   // 找對應會員（用手機號比對）
   const member = members.find(m => normalizePhoneForMatch(m.phone) === normalizePhoneForMatch(order.phone));
+
+  // 有舊 tx 的話，先把舊貢獻從會員身上扣掉（配合新 tx 重新計算，避免重複加）
+  if (oldTx && member) {
+    member.totalSpent = Math.max(0, (member.totalSpent || 0) - (oldTx.subtotal || 0));
+    member.points = Math.max(0, (member.points || 0) - (oldTx.pointsEarned || 0));
+  }
+
+  // 沒有有效商品 → 只保存並離開（相當於整單取消）
+  if (effective.length === 0) {
+    if (oldTx && member) save('pos_members', members);
+    save('pos_transactions', transactions);
+    return;
+  }
+
+  const subtotal = effective.reduce((s, x) => s + (x.item.price || 0) * (x.item.qty || 1), 0);
+  const total = subtotal + (order.shippingFee || 0);
+  // ★ 會員積分：滿 10 元 1 點（跟店內 POS 一致），只算 subtotal 不含運費
+  const pointsEarned = member ? Math.floor(subtotal / 10) : 0;
 
   // 時間用 createdAt / paidAt / 現在（優先次序）
   const dateSource = order.paidAt || order.createdAt || new Date().toISOString();
@@ -8466,22 +8533,39 @@ function upsertOrderTx(order) {
     memberDiscount: 0,
     total,
     payMethod: order.actualPayMethod || 'line', // 用選定的付款方式，沒選則預設 LINE Pay
-    pointsEarned: 0,
+    pointsEarned, // ★ 改：實際計算的積分（原本寫死 0）
     note: '📮 ' + order.orderNo,
     cashReceived: 0,
     change: 0,
     isSelfUse: false,
   };
   transactions.unshift(tx);
+
+  // ★ 新：更新會員累計消費（只用 subtotal，不含運費）+ 積分
+  if (member) {
+    member.totalSpent = (member.totalSpent || 0) + subtotal;
+    member.points = (member.points || 0) + pointsEarned;
+    save('pos_members', members);
+  }
+
   save('pos_transactions', transactions);
 }
 
 function removeOrderTx(orderNo) {
   const idx = transactions.findIndex(t => t.sourceOrderNo === orderNo);
-  if (idx >= 0) {
-    transactions.splice(idx, 1);
-    save('pos_transactions', transactions);
+  if (idx < 0) return;
+  const oldTx = transactions[idx];
+  // ★ 扣掉舊 tx 對會員的貢獻（訂單降回未付款/取消時）
+  if (oldTx.memberId) {
+    const m = members.find(x => x.id === oldTx.memberId);
+    if (m) {
+      m.totalSpent = Math.max(0, (m.totalSpent || 0) - (oldTx.subtotal || 0));
+      m.points = Math.max(0, (m.points || 0) - (oldTx.pointsEarned || 0));
+      save('pos_members', members);
+    }
   }
+  transactions.splice(idx, 1);
+  save('pos_transactions', transactions);
 }
 
 // 狀態切換時的自動 reconcile：should commit vs actually committed，把差距補上
@@ -8496,15 +8580,15 @@ function reconcileOrder(order, oldStatus, newStatus) {
 
   if (shouldCommit && !actuallyCommitted && !isLegacy) {
     // uncommitted → committed：扣庫存 + 建 tx
-    deductOrderStock(order);
+    const stockResults = deductOrderStock(order);
     upsertOrderTx(order);
-    return { action: 'commit' };
+    return { action: 'commit', stockResults };
   }
   if (!shouldCommit && actuallyCommitted) {
     // committed → uncommitted：還原庫存 + 刪 tx
-    restoreOrderStock(order);
+    const stockResults = restoreOrderStock(order);
     removeOrderTx(order.orderNo);
-    return { action: 'restore' };
+    return { action: 'restore', stockResults };
   }
   return { action: 'none' };
 }
@@ -8576,18 +8660,44 @@ async function updateOrderStatusRemote(orderNo, newStatus) {
     // 更新本地 + 呼叫 reconcile 觸發庫存/報表聯動
     const order = onlineOrders.find(o => o.orderNo === orderNo);
     let reconcileMsg = '';
+    let stockFails = [];
     if (order) {
       const oldStatus = order.status || 'unpaid';
       order.status = newStatus;
       // 記錄付款時間（給 tx 用）
       if (newStatus === 'paid' && !order.paidAt) order.paidAt = new Date().toISOString();
       const result = reconcileOrder(order, oldStatus, newStatus);
-      if (result.action === 'commit') reconcileMsg = ' · ✅ 已扣庫存 + 進報表';
-      else if (result.action === 'restore') reconcileMsg = ' · ↩️ 已還原庫存 + 從報表移除';
+      const sr = result.stockResults || [];
+      const okCount = sr.filter(x => x.success).length;
+      stockFails = sr.filter(x => !x.success);
+      if (result.action === 'commit') {
+        reconcileMsg = stockFails.length
+          ? ` · ⚠️ 扣庫存 ${okCount} 成 / ${stockFails.length} 失敗 · 進報表`
+          : ` · ✅ 已扣庫存 (${okCount} 項) · 進報表`;
+      } else if (result.action === 'restore') {
+        reconcileMsg = stockFails.length
+          ? ` · ⚠️ 還原 ${okCount} 成 / ${stockFails.length} 失敗 · 從報表移除`
+          : ` · ↩️ 已還原庫存 (${okCount} 項) · 從報表移除`;
+      }
     }
     renderOnlineOrders();
     updateOnlineOrdersBadge();
-    toast(`訂單 ${orderNo} → 「${OO_STATUS_LABELS[newStatus]}」${reconcileMsg}`, 'success');
+    toast(`訂單 ${orderNo} → 「${OO_STATUS_LABELS[newStatus]}」${reconcileMsg}`, stockFails.length ? 'warn' : 'success');
+    // ★ 有失敗 → 跳 alert 告訴 Wan 哪個規格對不上、要怎麼處理
+    if (stockFails.length) {
+      const lines = stockFails.map(f => {
+        const it = f.item;
+        const specDetail = `${it.color || '(無色)'} / ${it.size || '(無尺)'}`;
+        const availSpec = f.availableKeys
+          ? '\n   商品現有規格：' + f.availableKeys.map(k => k.replace('|', '/') || '(無規格)').join('、')
+          : '';
+        return `• ${f.productName || it.name} × ${it.qty || 1}\n   規格：${specDetail}\n   原因：${f.reason}${availSpec}`;
+      }).join('\n\n');
+      alert(
+        `⚠️ 訂單 ${orderNo} 有 ${stockFails.length} 項庫存未動：\n\n${lines}\n\n` +
+        `請到「商品」把規格改成對得上的名稱，或手動調整庫存。`
+      );
+    }
   } catch (err) {
     console.error(err);
     toast('更新失敗：' + err.message, 'error');
