@@ -462,12 +462,28 @@
     .main { flex: 1; min-height: 0; }
     .page { flex-direction: column !important; }
 
+    /* 讓 .main 變成 flex column，讓 active page 能撐滿 */
+    .main { display: flex !important; flex-direction: column !important; }
+    .page.active { flex: 1 !important; min-height: 0; }
+
     /* ── POS 頁面 ── */
-    #pos-page { flex-direction: column !important; }
-    .pos-left { flex: none; min-height: 280px; max-height: 50vh; }
+    #pos-page {
+      flex: 1 !important;
+      min-height: 0;
+      flex-direction: column !important;
+      overflow: hidden;
+    }
+    .pos-left {
+      flex: 1 1 45%;
+      min-height: 200px;
+      max-height: none;
+      overflow-y: auto;
+    }
     .pos-right {
       width: 100% !important;
-      max-height: 50vh;
+      flex: 1 1 55%;
+      max-height: none;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
