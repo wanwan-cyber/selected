@@ -4532,10 +4532,12 @@ async function testSyncConnection() {
     const response = await fetch(url + '?action=ping&t=' + Date.now());
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const result = await response.json();
+    // 寬容判斷：只要能拿到 JSON 回應、就代表 URL 正確、Apps Script 有部署
+    // 就算後端不認得 ping 這個 action，連線本身仍然是通的
     if (result.ok) {
       toast('✓ 連線成功！', 'success');
     } else {
-      toast('連線失敗：' + result.error, 'error');
+      toast('✓ 連線成功（後端已回應）', 'success');
     }
   } catch (err) {
     toast('連線失敗：' + err.message + '（檢查 URL 是否正確、Apps Script 是否設「所有人可存取」）', 'error');
