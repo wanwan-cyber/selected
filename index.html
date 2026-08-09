@@ -411,6 +411,15 @@
   .trend-meta span { display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
 
   /* ══════════════════════════════════════════════
+     📱 手機版結帳 Bottom Sheet（桌面版隱藏這些元素）
+  ══════════════════════════════════════════════ */
+  .cart-mini-bar,
+  .checkout-sheet-header,
+  .checkout-sheet-backdrop {
+    display: none;
+  }
+
+  /* ══════════════════════════════════════════════
      📱 MOBILE OPTIMIZATION (≤ 768px)
   ══════════════════════════════════════════════ */
   @media (max-width: 768px) {
@@ -456,7 +465,122 @@
     /* ── POS 頁面 ── */
     #pos-page { flex-direction: column !important; }
     .pos-left { flex: none; min-height: 280px; max-height: 50vh; }
-    .pos-right { width: 100% !important; max-height: 50vh; overflow-y: auto; border-left: none !important; border-top: 1px solid var(--border); }
+    .pos-right {
+      width: 100% !important;
+      max-height: 50vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-left: none !important;
+      border-top: 1px solid var(--border);
+    }
+    .cart-top { flex-shrink: 0; }
+    .cart-items { flex: 1; min-height: 100px; overflow-y: auto; padding: 4px 10px; }
+    /* 迷你底部條：常駐可見 */
+    .cart-mini-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--cream, #FAF3EB);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .cart-mini-bar .mini-total-block { flex: 1; }
+    .cart-mini-bar .mini-total-label { font-size: 10px; color: var(--text-muted, #888); line-height: 1; }
+    .cart-mini-bar .mini-total-amount { font-size: 22px; font-weight: 900; color: var(--gold, #c9a84c); line-height: 1.2; margin-top: 2px; }
+    .cart-mini-bar .mini-checkout-btn {
+      padding: 12px 22px;
+      background: linear-gradient(135deg, var(--gold, #c9a84c), #b8942a);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius, 10px);
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      box-shadow: 0 3px 10px rgba(201,168,76,.35);
+    }
+    /* 結帳明細 default 隱藏（收在 sheet 裡） */
+    .cart-checkout-section { display: none; }
+    /* Sheet 開啟時：滑出來 */
+    body.checkout-sheet-open .cart-checkout-section {
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      max-height: 88vh;
+      z-index: 250;
+      background: #fff;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 -6px 24px rgba(0,0,0,0.18);
+      animation: slideUpSheet 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+      overflow-y: auto;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    body.checkout-sheet-open .checkout-sheet-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 200;
+      animation: fadeInBackdrop 0.2s ease-out;
+    }
+    /* Sheet 頭部 */
+    .checkout-sheet-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: #fff;
+      padding: 8px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .checkout-sheet-handle {
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 40px;
+      height: 4px;
+      border-radius: 2px;
+      background: #ddd;
+    }
+    .checkout-sheet-header h3 {
+      margin: 6px 0 0;
+      font-size: 15px;
+      font-weight: 900;
+      color: var(--text, #333);
+    }
+    .checkout-sheet-close {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: var(--text-muted, #888);
+      cursor: pointer;
+      padding: 6px 10px;
+    }
+    /* Sheet 內金額顯示更醒目 */
+    body.checkout-sheet-open .grand-display { padding: 14px 16px 10px; }
+    body.checkout-sheet-open .grand-amount { font-size: 34px; }
+    body.checkout-sheet-open .checkout-btn { padding: 15px; font-size: 16px; }
+    @keyframes slideUpSheet {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    @keyframes fadeInBackdrop {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
 
     /* POS 工具列：搜尋、條碼 */
     .pos-toolbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
@@ -925,6 +1049,21 @@
         <div class="cart-items" id="cart-items">
           <div class="empty-state"><div class="icon">🛍</div><p>尚未加入商品</p></div>
         </div>
+        <!-- 手機版迷你底部條（桌面版隱藏） -->
+        <div class="cart-mini-bar" onclick="openCheckoutSheet()">
+          <div class="mini-total-block">
+            <div class="mini-total-label">應付金額</div>
+            <div class="mini-total-amount" id="mini-total">$0</div>
+          </div>
+          <button class="mini-checkout-btn" id="mini-checkout-btn" onclick="event.stopPropagation(); openCheckoutSheet()">結　帳 ›</button>
+        </div>
+        <!-- 結帳明細區：桌面版直接顯示、手機版變成底部滑出 sheet -->
+        <div class="cart-checkout-section" id="cart-checkout-section">
+          <div class="checkout-sheet-header">
+            <div class="checkout-sheet-handle"></div>
+            <h3>結帳明細</h3>
+            <button class="checkout-sheet-close" onclick="closeCheckoutSheet()" aria-label="關閉">✕</button>
+          </div>
         <div class="cart-promo">
           <div class="promo-row">
             <label>折扣</label>
@@ -979,7 +1118,9 @@
           </div>
           <button class="checkout-btn" id="checkout-btn" onclick="doCheckout()">結　帳</button>
         </div>
+        </div>
       </div>
+      <div class="checkout-sheet-backdrop" onclick="closeCheckoutSheet()"></div>
     </div>
 
     <!-- PRODUCTS PAGE -->
@@ -2492,6 +2633,16 @@ function clearCart() {
   document.getElementById('order-note').value = '';
   document.getElementById('cash-input').value = '';
   renderCart(); calcTotals();
+  closeCheckoutSheet(); // ★ 手機版：清空/結帳完成時關 sheet
+}
+
+// ======================== 📱 手機版結帳 Bottom Sheet ========================
+function openCheckoutSheet() {
+  if (cart.length === 0) { toast('購物車是空的', 'warn'); return; }
+  document.body.classList.add('checkout-sheet-open');
+}
+function closeCheckoutSheet() {
+  document.body.classList.remove('checkout-sheet-open');
 }
 
 // ======================== HOLD ORDERS (掛單) ========================
@@ -2635,7 +2786,11 @@ function calcTotals() {
   document.getElementById('t-member-disc').textContent = '-' + fmt(memberDisc);
   document.getElementById('member-disc-row').style.display = memberDisc > 0 ? 'flex' : 'none';
   document.getElementById('t-grand').textContent = fmt(total);
+  const miniTotalEl = document.getElementById('mini-total');
+  if (miniTotalEl) miniTotalEl.textContent = fmt(total);
   document.getElementById('checkout-btn').disabled = cart.length === 0;
+  const miniBtn = document.getElementById('mini-checkout-btn');
+  if (miniBtn) miniBtn.disabled = cart.length === 0;
   calcChange();
 }
 
