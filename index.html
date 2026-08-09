@@ -30,20 +30,18 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; overflow: hidden; }
-  body { font-family: 'PingFang TC','Microsoft JhengHei',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; }
+  body { font-family: 'PingFang TC','Microsoft JhengHei',sans-serif; background: var(--primary); color: var(--text); min-height: 100vh; min-height: 100dvh; }
   /* iPad / iOS 安全區域：避開瀏海、狀態列、home indicator */
   #app {
     display: flex;
     height: 100vh;
     height: 100dvh; /* 動態視窗高度，會跟著 iOS Safari URL bar 收合而變 */
-    height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-    overflow: hidden;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     background: var(--primary); /* 讓 padding 區域是深綠色，跟側邊欄一致 */
+    overflow: hidden;
     box-sizing: border-box;
   }
 
@@ -4397,7 +4395,9 @@ async function syncUpload() {
     });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const result = await response.json();
-    if (!result.ok) throw new Error(result.error || '未知錯誤');
+    if (!result.ok) {
+      throw new Error(result.error || `後端無錯誤訊息，完整回應：${JSON.stringify(result).slice(0, 200)}`);
+    }
     syncState.lastSyncAt = new Date();
     syncState.lastError = '';
     updateSyncStatus('synced');
@@ -4421,7 +4421,9 @@ async function syncDownload(showToast = false) {
     });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const result = await response.json();
-    if (!result.ok) throw new Error(result.error || '未知錯誤');
+    if (!result.ok) {
+      throw new Error(result.error || `後端無錯誤訊息，完整回應：${JSON.stringify(result).slice(0, 200)}`);
+    }
 
     const data = result.data || {};
     let changed = false;
