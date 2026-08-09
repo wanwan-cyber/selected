@@ -1499,7 +1499,8 @@
         <div class="form-group"><label>生日</label><input type="date" id="mm-birthday"></div>
       </div>
       <div class="form-row">
-        <div class="form-group" style="flex:0 0 50%;"><label>初始積分</label><input type="number" id="mm-points" value="0" min="0"></div>
+        <div class="form-group"><label>初始積分</label><input type="number" id="mm-points" value="0" min="0"></div>
+        <div class="form-group"><label>累計消費</label><input type="number" id="mm-totalspent" value="0" min="0"></div>
       </div>
       <div class="form-group"><label>備註</label><textarea id="mm-note" rows="2" style="resize:vertical;"></textarea></div>
     </div>
@@ -4941,6 +4942,7 @@ function openMemberModal(id) {
   document.getElementById('mm-barcode').value = m?.barcode || '';
   document.getElementById('mm-birthday').value = m?.birthday || '';
   document.getElementById('mm-points').value = m?.points ?? 0;
+  document.getElementById('mm-totalspent').value = m?.totalSpent ?? 0;
   document.getElementById('mm-note').value = m?.note || '';
   openModal('member-modal');
 }
@@ -4966,7 +4968,7 @@ function saveMember() {
     barcode,
     birthday: document.getElementById('mm-birthday').value,
     points: parseInt(document.getElementById('mm-points').value)||0,
-    totalSpent: editMemberId ? (members.find(x => x.id===editMemberId)?.totalSpent||0) : 0,
+    totalSpent: parseInt(document.getElementById('mm-totalspent').value)||0,
     note: document.getElementById('mm-note').value.trim(),
   };
   if (editMemberId) {
