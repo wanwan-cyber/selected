@@ -477,15 +477,15 @@
       overflow: hidden;
     }
     .pos-left {
-      flex: 1 1 45%;
+      flex: 1 1 auto;  /* 吃剩下的空間 */
       min-height: 200px;
       max-height: none;
       overflow-y: auto;
     }
     .pos-right {
       width: 100% !important;
-      flex: 1 1 55%;
-      max-height: none;
+      flex: 0 0 auto;  /* 只佔內容高度、不吃剩餘空間 */
+      max-height: 60vh;  /* 上限：避免品項太多時把商品區擠沒 */
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -494,7 +494,16 @@
       border-top: 1px solid var(--border);
     }
     .cart-top { flex-shrink: 0; }
-    .cart-items { flex: 1; min-height: 100px; overflow-y: auto; padding: 4px 10px; }
+    .cart-items {
+      flex: 0 1 auto;  /* 有多少內容就多高、不硬撐 */
+      min-height: 60px;
+      max-height: 40vh;  /* 品項多的時候在自己內部滾動 */
+      overflow-y: auto;
+      padding: 4px 10px;
+    }
+    /* 空車時的圖示區壓縮，不要留大空白 */
+    .cart-items .empty-state { padding: 24px 20px; }
+    .cart-items .empty-state .icon { font-size: 36px; margin-bottom: 6px; }
     /* 迷你底部條：常駐可見 */
     .cart-mini-bar {
       display: flex;
