@@ -29,12 +29,15 @@
     --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'PingFang TC','Microsoft JhengHei',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  html, body { height: 100%; overflow: hidden; }
+  body { font-family: 'PingFang TC','Microsoft JhengHei',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; }
   /* iPad / iOS 安全區域：避開瀏海、狀態列、home indicator */
   #app {
     display: flex;
     height: 100vh;
+    height: 100dvh; /* 動態視窗高度，會跟著 iOS Safari URL bar 收合而變 */
     height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow: hidden;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
