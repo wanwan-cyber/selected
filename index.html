@@ -3737,17 +3737,38 @@ function saveCurrentVendorCode() {
 function renderPmVariantChips() {
   const allColors = getAllColors();
   pmColors.forEach(c => { if (!allColors.includes(c)) allColors.unshift(c); });
-  document.getElementById('pm-color-chips').innerHTML = allColors.length
+  const colorChipsHtml = allColors.length
     ? allColors.map(c => `<span class="chip ${pmColors.includes(c)?'selected':''}" onclick="togglePmVariant('color','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
     : '<span style="font-size:12px;color:var(--text-muted);">尚無顏色，請從下方新增</span>';
+  document.getElementById('pm-color-chips').innerHTML = colorChipsHtml + renderVariantOrderBar('color', pmColors);
 
   const allSizes = getAllSizes();
   pmSizes.forEach(s => { if (!allSizes.includes(s)) allSizes.unshift(s); });
-  document.getElementById('pm-size-chips').innerHTML = allSizes.length
+  const sizeChipsHtml = allSizes.length
     ? allSizes.map(s => `<span class="chip ${pmSizes.includes(s)?'selected':''}" onclick="togglePmVariant('size','${s.replace(/'/g,"\\'")}')">${s}</span>`).join('')
     : '<span style="font-size:12px;color:var(--text-muted);">尚無尺寸，請從下方新增</span>';
+  document.getElementById('pm-size-chips').innerHTML = sizeChipsHtml + renderVariantOrderBar('size', pmSizes);
   renderPmStockMatrix();
 }
+
+// 已選項目的順序調整條（2 個以上才顯示）
+function renderVariantOrderBar(type, arr) {
+  if (!arr || arr.length < 2) return '';
+  const label = type === 'color' ? '顏色' : '尺寸';
+  return `<div style="margin-top:10px;padding:8px 10px;background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.02));border-radius:8px;border:1px solid var(--gold-light);">
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">📋 已選${label}順序（就是客人在官網看到的順序）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+      ${arr.map((v, idx) => `
+        <span style="display:inline-flex;align-items:center;gap:2px;padding:3px 4px 3px 10px;background:var(--gold);color:#fff;border-radius:14px;font-size:12px;font-weight:600;box-shadow:0 1px 3px rgba(201,168,76,.3);">
+          <span style="opacity:.75;font-size:10px;">${idx + 1}.</span> ${v}
+          ${idx > 0 ? `<button type="button" onclick="movePmVariant('${type}', ${idx}, -1)" style="background:rgba(255,255,255,.28);border:none;color:#fff;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;margin-left:3px;padding:0;" title="往前移">◀</button>` : ''}
+          ${idx < arr.length - 1 ? `<button type="button" onclick="movePmVariant('${type}', ${idx}, 1)" style="background:rgba(255,255,255,.28);border:none;color:#fff;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0;" title="往後移">▶</button>` : ''}
+        </span>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
 function togglePmVariant(type, val) {
   const arr = type === 'color' ? pmColors : pmSizes;
   const idx = arr.indexOf(val);
@@ -3755,6 +3776,17 @@ function togglePmVariant(type, val) {
   else arr.push(val);
   renderPmVariantChips();
 }
+
+// 微調已選顏色/尺寸順序（direction: -1 = 往前, +1 = 往後）
+function movePmVariant(type, idx, direction) {
+  const arr = type === 'color' ? pmColors : pmSizes;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= arr.length) return;
+  const [item] = arr.splice(idx, 1);
+  arr.splice(newIdx, 0, item);
+  renderPmVariantChips();
+}
+
 function addNewVariant(type) {
   const inp = document.getElementById(type === 'color' ? 'pm-color-input' : 'pm-size-input');
   const val = inp.value.trim();
