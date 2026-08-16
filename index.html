@@ -3852,6 +3852,7 @@ function saveProduct() {
     const key = c + '|' + s;
     cleanStock[key] = parseInt(pmStockMap[key]) || 0;
   }));
+  const existing = editProductId ? products.find(x => x.id === editProductId) : null;
   const data = {
     id: editProductId || uid(),
     name, cat: pmCat, vendor: pmVendor,
@@ -3866,6 +3867,7 @@ function saveProduct() {
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
     onlineShop: document.getElementById('pm-online-shop').checked,
+    createdAt: existing?.createdAt || Date.now(), // ★ 上架時間戳，供官網「新品排序」用
   };
   if (editProductId) {
     const idx = products.findIndex(x => x.id === editProductId);
