@@ -3969,9 +3969,11 @@ function renderImageGallery() {
   let html = pmImages.map((src, idx) => `
     <div style="position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:url('${src.replace(/'/g, "\\'")}') center/cover, var(--bg);">
       ${idx === 0 ? '<div style="position:absolute;top:2px;left:2px;background:var(--gold);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;">主圖</div>' : ''}
-      ${src.startsWith('data:') ? '<div style="position:absolute;bottom:2px;left:2px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;">本地</div>' : '<div style="position:absolute;bottom:2px;left:2px;background:rgba(39,174,96,.85);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;">☁</div>'}
+      ${src.startsWith('data:') ? '<div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;">本地</div>' : '<div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:rgba(39,174,96,.85);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;">☁</div>'}
       <button type="button" onclick="removeProductImage(${idx})" style="position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="移除">×</button>
-      ${idx > 0 ? `<button type="button" onclick="moveImageFirst(${idx})" style="position:absolute;bottom:-4px;right:-4px;background:var(--primary);color:var(--gold);border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="設為主圖">★</button>` : ''}
+      ${idx > 0 ? `<button type="button" onclick="moveImageFirst(${idx})" style="position:absolute;top:-4px;left:-4px;background:var(--gold);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="設為主圖">★</button>` : ''}
+      ${idx > 0 ? `<button type="button" onclick="moveImage(${idx}, -1)" style="position:absolute;bottom:-4px;left:-4px;background:var(--primary);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="往前移一格">◀</button>` : ''}
+      ${idx < pmImages.length - 1 ? `<button type="button" onclick="moveImage(${idx}, 1)" style="position:absolute;bottom:-4px;right:-4px;background:var(--primary);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="往後移一格">▶</button>` : ''}
     </div>
   `).join('');
   // 顯示「還可以新增 N 張」提示
@@ -4008,6 +4010,15 @@ function moveImageFirst(idx) {
   pmImages.unshift(item);
   renderImageGallery();
   toast('已設為主圖', 'success');
+}
+
+// 左右微調照片順序（direction: -1 = 往前, +1 = 往後）
+function moveImage(idx, direction) {
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= pmImages.length) return;
+  const [item] = pmImages.splice(idx, 1);
+  pmImages.splice(newIdx, 0, item);
+  renderImageGallery();
 }
 
 function addImageByUrl() {
