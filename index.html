@@ -1190,7 +1190,7 @@
         <div class="table-wrap">
           <table class="data-table" id="products-table">
             <thead><tr>
-              <th style="width:60px;">圖</th><th>商品名稱</th><th>款號</th><th>條碼</th><th>分類</th><th>廠商</th><th>顏色</th><th>尺寸</th><th>單價</th><th>庫存</th><th style="text-align:right;">操作</th>
+              <th style="width:60px;">圖</th><th>商品名稱</th><th style="width:70px;text-align:center;">強推</th><th>款號</th><th>條碼</th><th>分類</th><th>廠商</th><th>顏色</th><th>尺寸</th><th>單價</th><th>庫存</th><th style="text-align:right;">操作</th>
             </tr></thead>
             <tbody id="products-tbody"></tbody>
           </table>
@@ -3198,12 +3198,14 @@ function renderProductsTable() {
           title="點擊切換官網上架狀態"
           style="display:inline-block;margin-left:6px;padding:2px 8px;font-size:10px;border-radius:9px;font-weight:700;vertical-align:middle;letter-spacing:.3px;cursor:pointer;transition:all .15s;border:${p.onlineShop ? '1px solid var(--gold)' : '1px dashed var(--border)'};background:${p.onlineShop ? 'var(--gold)' : 'transparent'};color:${p.onlineShop ? '#fff' : 'var(--text-muted)'};box-shadow:${p.onlineShop ? '0 1px 3px rgba(201,168,76,.3)' : 'none'};"
         >${p.onlineShop ? '🛒 已上架' : '☐ 未上架'}</button>
+        ${p.note ? '<br><span style="font-size:11px;color:var(--text-muted);">'+p.note+'</span>' : ''}
+      </td>
+      <td style="text-align:center;">
         <button
           onclick="event.stopPropagation();toggleProductFeatured('${p.id}')"
-          title="點擊切換官網強推（置頂）"
-          style="display:inline-block;margin-left:4px;padding:2px 8px;font-size:10px;border-radius:9px;font-weight:700;vertical-align:middle;letter-spacing:.3px;cursor:pointer;transition:all .15s;border:${p.featured ? '1px solid #D49768' : '1px dashed var(--border)'};background:${p.featured ? '#D49768' : 'transparent'};color:${p.featured ? '#fff' : 'var(--text-muted)'};box-shadow:${p.featured ? '0 1px 3px rgba(212,151,104,.35)' : 'none'};"
-        >${p.featured ? '🌟 強推中' : '☐ 強推'}</button>
-        ${p.note ? '<br><span style="font-size:11px;color:var(--text-muted);">'+p.note+'</span>' : ''}
+          title="${p.featured ? '正在強推 — 點擊取消' : '點擊設為官網強推（置頂）'}"
+          style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;cursor:pointer;transition:all .15s;border:${p.featured ? '1px solid #D49768' : '1px dashed var(--border)'};background:${p.featured ? '#D49768' : 'transparent'};color:${p.featured ? '#fff' : 'var(--text-muted)'};box-shadow:${p.featured ? '0 2px 6px rgba(212,151,104,.4)' : 'none'};font-size:16px;line-height:1;padding:0;"
+        >${p.featured ? '🌟' : '☆'}</button>
       </td>
       <td><span style="font-family:monospace;font-size:12px;color:var(--primary);font-weight:600;">${p.sku || '—'}</span></td>
       <td><span style="font-family:monospace;font-size:12px;color:var(--text-muted);">${p.barcode || '—'}</span></td>
