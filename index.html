@@ -3226,9 +3226,10 @@ function renderProductsTable() {
       </td>
     </tr>
   `;}).join('') || '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted);">尚無商品</td></tr>';
-  // 順便更新篩選 UI（分類件數、廠商選項）
+  // 順便更新篩選 UI（分類件數、廠商選項、強推按鈕總數）
   if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
   if (typeof refreshPmFilterVendorOptions === 'function') refreshPmFilterVendorOptions();
+  if (typeof updatePmFilterFeaturedBtn === 'function') updatePmFilterFeaturedBtn();
 }
 
 // ============================================================
