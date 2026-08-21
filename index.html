@@ -1582,11 +1582,22 @@
           <input type="text" id="pm-link" placeholder="https://instagram.com/p/..." style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;">
         </div>
       </div>
-      <!-- 材質（純文字自由輸入，會顯示在官網詳情頁）-->
+      <!-- 材質（英文網格，只填 %；會自動組成標籤字串顯示在官網詳情頁）-->
       <div class="form-group">
         <label>材質</label>
-        <input type="text" id="pm-material" placeholder="例：棉 60% 聚酯 40%" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">此欄位會顯示在官網商品詳情頁。留空則不顯示。</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">依標籤填入 %，用不到的留空。</div>
+        <div id="pm-material-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;"></div>
+        <div style="margin-top:10px;">
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">其他材質（自訂英文名稱）</div>
+          <div id="pm-material-custom-rows"></div>
+          <button type="button" onclick="addMaterialCustomRow()" style="margin-top:4px;padding:4px 10px;background:transparent;border:1px dashed var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer;">+ 新增自訂材質</button>
+        </div>
+        <div style="margin-top:8px;padding:8px 12px;background:var(--surface2);border-radius:6px;font-size:12px;">
+          <span style="color:var(--text-muted);">預覽：</span>
+          <span id="pm-material-preview" style="color:var(--gold);font-weight:700;font-family:monospace;">—</span>
+          <span id="pm-material-sum" style="margin-left:8px;font-size:11px;color:var(--text-muted);"></span>
+        </div>
+        <input type="hidden" id="pm-material">
       </div>
       <!-- 上架官網開關 -->
       <div class="form-group" style="padding:12px 14px;background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-radius:8px;border:1px solid var(--gold-light);">
@@ -3580,7 +3591,7 @@ function openProductModal(id) {
   document.getElementById('pm-cost').value = p?.cost || '';
   document.getElementById('pm-note').value = p?.note || '';
   document.getElementById('pm-link').value = p?.link || '';
-  document.getElementById('pm-material').value = p?.material || '';
+  loadPmMaterial(p?.material); // ★ 材質網格（英文預設清單 + 自訂欄位）
   // 上架官網開關：舊資料 undefined → 預設 false（不上架）
   document.getElementById('pm-online-shop').checked = p?.onlineShop === true;
   // 強推開關：舊資料 undefined → 預設 false
@@ -3635,6 +3646,114 @@ function navProductModal(delta) {
   saveProductSilent();
   // 載入下/上一個商品
   openProductModal(ids[newIdx]);
+}
+
+// ============================================================
+// 材質欄位（英文網格 + 自訂 + 預覽）
+// ============================================================
+const PM_MATERIAL_LIST = [
+  'COTTON', 'POLYESTER',
+  'NYLON', 'SPANDEX',
+  'RAYON', 'VISCOSE',
+  'WOOL', 'LINEN',
+  'SILK', 'ACRYLIC',
+  'MODAL', 'TENCEL'
+];
+
+function renderPmMaterialGrid() {
+  const grid = document.getElementById('pm-material-grid');
+  if (!grid) return;
+  grid.innerHTML = PM_MATERIAL_LIST.map(name => `
+    <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:12px;">
+      <span style="flex:1;font-family:monospace;font-weight:600;color:var(--primary);letter-spacing:.3px;">${name}</span>
+      <input type="number" min="0" max="100" placeholder="0" data-material="${name}" oninput="updatePmMaterialString()" style="width:52px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;font-family:monospace;">
+      <span style="color:var(--text-muted);">%</span>
+    </label>
+  `).join('');
+}
+
+function addMaterialCustomRow(name, pct) {
+  const container = document.getElementById('pm-material-custom-rows');
+  if (!container) return;
+  const nameVal = (name || '').replace(/"/g, '&quot;');
+  const pctVal = (pct === undefined || pct === null || pct === '') ? '' : pct;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+  row.innerHTML = `
+    <input type="text" placeholder="材質名稱（英文）" value="${nameVal}" oninput="this.value=this.value.toUpperCase();updatePmMaterialString()" class="pm-material-custom-name" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:monospace;text-transform:uppercase;">
+    <input type="number" min="0" max="100" placeholder="0" value="${pctVal}" oninput="updatePmMaterialString()" class="pm-material-custom-pct" style="width:52px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:right;font-family:monospace;">
+    <span style="color:var(--text-muted);font-size:12px;">%</span>
+    <button type="button" onclick="this.parentElement.remove();updatePmMaterialString();" title="移除" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">×</button>
+  `;
+  container.appendChild(row);
+}
+
+// 收集所有欄位 → 組成標籤字串 → 寫入 hidden input + 更新預覽
+function updatePmMaterialString() {
+  const parts = [];
+  // 預設材質
+  document.querySelectorAll('#pm-material-grid input[data-material]').forEach(inp => {
+    const pct = parseInt(inp.value);
+    if (pct > 0) parts.push({ name: inp.dataset.material, pct });
+  });
+  // 自訂材質
+  document.querySelectorAll('#pm-material-custom-rows > div').forEach(row => {
+    const nameEl = row.querySelector('.pm-material-custom-name');
+    const pctEl = row.querySelector('.pm-material-custom-pct');
+    if (!nameEl || !pctEl) return;
+    const nm = nameEl.value.trim().toUpperCase();
+    const pct = parseInt(pctEl.value);
+    if (nm && pct > 0) parts.push({ name: nm, pct });
+  });
+  const str = parts.map(p => `${p.pct}% ${p.name}`).join(' ');
+  const hidden = document.getElementById('pm-material');
+  if (hidden) hidden.value = str;
+  const preview = document.getElementById('pm-material-preview');
+  if (preview) preview.textContent = str || '—';
+  // 顯示總和（提示是否 = 100%）
+  const sum = parts.reduce((a, p) => a + p.pct, 0);
+  const sumEl = document.getElementById('pm-material-sum');
+  if (sumEl) {
+    if (parts.length === 0) sumEl.textContent = '';
+    else if (sum === 100) sumEl.innerHTML = '<span style="color:#2a8a4f;">✓ 100%</span>';
+    else sumEl.innerHTML = `<span style="color:#c47a2c;">合計 ${sum}%（非 100）</span>`;
+  }
+}
+
+// 把「60% COTTON 40% POLYESTER」或「COTTON 60% POLYESTER 40%」拆成 {COTTON:60, POLYESTER:40}
+function parsePmMaterialString(str) {
+  const parts = {};
+  if (!str) return parts;
+  // 先掃「數字% 材質」
+  const re1 = /(\d+)\s*%\s*([A-Za-z][A-Za-z\-]*)/g;
+  let m;
+  while ((m = re1.exec(str)) !== null) {
+    parts[m[2].toUpperCase()] = parseInt(m[1]);
+  }
+  // 再掃「材質 數字%」（沒被前面掃到的才補進來）
+  const re2 = /([A-Za-z][A-Za-z\-]*)\s+(\d+)\s*%/g;
+  while ((m = re2.exec(str)) !== null) {
+    const key = m[1].toUpperCase();
+    if (!(key in parts)) parts[key] = parseInt(m[2]);
+  }
+  return parts;
+}
+
+// 開啟商品 modal 時呼叫：重建 grid、把 p.material 拆回輸入格
+function loadPmMaterial(str) {
+  renderPmMaterialGrid();
+  document.getElementById('pm-material-custom-rows').innerHTML = '';
+  const parts = parsePmMaterialString(str || '');
+  Object.keys(parts).forEach(name => {
+    const pct = parts[name];
+    const gridInput = document.querySelector(`#pm-material-grid input[data-material="${name}"]`);
+    if (gridInput) {
+      gridInput.value = pct;
+    } else {
+      addMaterialCustomRow(name, pct); // 不在預設清單 → 進自訂欄位
+    }
+  });
+  updatePmMaterialString();
 }
 
 // 靜默儲存（切換時用，不彈 toast、不關 modal）
