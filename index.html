@@ -1582,6 +1582,12 @@
           <input type="text" id="pm-link" placeholder="https://instagram.com/p/..." style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;">
         </div>
       </div>
+      <!-- 材質（純文字自由輸入，會顯示在官網詳情頁）-->
+      <div class="form-group">
+        <label>材質</label>
+        <input type="text" id="pm-material" placeholder="例：棉 60% 聚酯 40%" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">此欄位會顯示在官網商品詳情頁。留空則不顯示。</div>
+      </div>
       <!-- 上架官網開關 -->
       <div class="form-group" style="padding:12px 14px;background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-radius:8px;border:1px solid var(--gold-light);">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:var(--primary);font-weight:700;margin:0;">
@@ -3574,6 +3580,7 @@ function openProductModal(id) {
   document.getElementById('pm-cost').value = p?.cost || '';
   document.getElementById('pm-note').value = p?.note || '';
   document.getElementById('pm-link').value = p?.link || '';
+  document.getElementById('pm-material').value = p?.material || '';
   // 上架官網開關：舊資料 undefined → 預設 false（不上架）
   document.getElementById('pm-online-shop').checked = p?.onlineShop === true;
   // 強推開關：舊資料 undefined → 預設 false
@@ -3646,6 +3653,7 @@ function saveProductSilent() {
     }
   });
 
+  const existing = products.find(x => x.id === editProductId);
   const data = {
     id: editProductId,
     name, cat: pmCat, vendor: pmVendor,
@@ -3660,6 +3668,9 @@ function saveProductSilent() {
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
     onlineShop: document.getElementById('pm-online-shop').checked,
+    featured: document.getElementById('pm-featured').checked, // ★ 官網強推
+    createdAt: existing?.createdAt || Date.now(), // ★ 保留原本的上架時間戳
+    material: document.getElementById('pm-material').value.trim(), // ★ 材質
   };
   const idx = products.findIndex(x => x.id === editProductId);
   if (idx >= 0) {
@@ -3982,6 +3993,7 @@ function saveProduct() {
     onlineShop: document.getElementById('pm-online-shop').checked,
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推：勾選後永遠排最前
     createdAt: existing?.createdAt || Date.now(), // ★ 上架時間戳，供官網「新品排序」用
+    material: document.getElementById('pm-material').value.trim(), // ★ 材質（顯示在官網詳情頁）
   };
   if (editProductId) {
     const idx = products.findIndex(x => x.id === editProductId);
