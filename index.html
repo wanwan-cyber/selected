@@ -1433,6 +1433,12 @@
           <div class="page-title"><span class="title-bar"></span>📊 銷售報表</div>
           <button class="btn btn-outline" onclick="exportCSV()">📥 匯出 CSV</button>
         </div>
+        <!-- 來源篩選 tab（全部 / 店內 / 官網）-->
+        <div id="report-source-tabs" style="display:flex;gap:6px;margin-bottom:14px;padding:6px;background:var(--surface2);border-radius:10px;">
+          <button type="button" data-src="all"    onclick="setReportSource('all')"    class="rs-tab active" style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:13px;cursor:pointer;background:var(--primary);color:#fff;font-weight:700;transition:.15s;">全部</button>
+          <button type="button" data-src="store"  onclick="setReportSource('store')"  class="rs-tab"        style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:13px;cursor:pointer;background:transparent;color:var(--text-soft);font-weight:600;transition:.15s;">🏪 店內</button>
+          <button type="button" data-src="online" onclick="setReportSource('online')" class="rs-tab"        style="flex:1;padding:8px 12px;border:none;border-radius:6px;font-size:13px;cursor:pointer;background:transparent;color:var(--text-soft);font-weight:600;transition:.15s;">📮 官網</button>
+        </div>
         <div class="stat-cards" id="stat-cards"></div>
         <div class="report-section">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
@@ -1598,6 +1604,11 @@
           <span id="pm-material-sum" style="margin-left:8px;font-size:11px;color:var(--text-muted);"></span>
         </div>
         <input type="hidden" id="pm-material">
+        <!-- 手動材質分析（有填就會取代官網自動產生的說明）-->
+        <div style="margin-top:12px;">
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">✍️ 材質分析（選填 · 手寫給客人看的介紹）</label>
+          <textarea id="pm-material-desc" rows="3" placeholder="留空 → 官網會依上面的 % 自動生成一段介紹（例：「採用 65% 棉、35% 聚酯纖維...」）。如果想寫自己的文案（例：「柔軟親膚、輕盈透氣，一年四季都好穿...」），填在這裡會取代自動生成的內容。" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;line-height:1.6;resize:vertical;"></textarea>
+        </div>
       </div>
       <!-- 上架官網開關 -->
       <div class="form-group" style="padding:12px 14px;background:linear-gradient(135deg,rgba(201,168,76,.08),rgba(201,168,76,.03));border-radius:8px;border:1px solid var(--gold-light);">
@@ -3592,6 +3603,7 @@ function openProductModal(id) {
   document.getElementById('pm-note').value = p?.note || '';
   document.getElementById('pm-link').value = p?.link || '';
   loadPmMaterial(p?.material); // ★ 材質網格（英文預設清單 + 自訂欄位）
+  document.getElementById('pm-material-desc').value = p?.materialDesc || ''; // ★ 手動材質分析（覆蓋官網自動生成）
   // 上架官網開關：舊資料 undefined → 預設 false（不上架）
   document.getElementById('pm-online-shop').checked = p?.onlineShop === true;
   // 強推開關：舊資料 undefined → 預設 false
@@ -3790,6 +3802,7 @@ function saveProductSilent() {
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推
     createdAt: existing?.createdAt || Date.now(), // ★ 保留原本的上架時間戳
     material: document.getElementById('pm-material').value.trim(), // ★ 材質
+    materialDesc: document.getElementById('pm-material-desc').value.trim(), // ★ 手動材質分析
   };
   const idx = products.findIndex(x => x.id === editProductId);
   if (idx >= 0) {
@@ -4113,6 +4126,7 @@ function saveProduct() {
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推：勾選後永遠排最前
     createdAt: existing?.createdAt || Date.now(), // ★ 上架時間戳，供官網「新品排序」用
     material: document.getElementById('pm-material').value.trim(), // ★ 材質（顯示在官網詳情頁）
+    materialDesc: document.getElementById('pm-material-desc').value.trim(), // ★ 手動材質分析（覆蓋官網自動生成）
   };
   if (editProductId) {
     const idx = products.findIndex(x => x.id === editProductId);
@@ -7382,7 +7396,9 @@ function getDateRange(rangeType) {
 function computeDayStats(day) {
   const next = new Date(day);
   next.setDate(next.getDate() + 1);
-  const dayTxs = transactions.filter(t => {
+  // 🏪/📮 依報表 tab 過濾（全部 / 店內 / 官網）
+  const scoped = typeof filterTxsBySource === 'function' ? filterTxsBySource(transactions) : transactions;
+  const dayTxs = scoped.filter(t => {
     const d = parseTxDate(t); // 傳整個 tx 物件，優先用 dateIso
     return d && d >= day && d < next;
   });
@@ -7573,9 +7589,34 @@ function renderHorizontalRows(days, maxVal, cfg) {
   `;
 }
 
+// 報表來源篩選（'all' / 'store' / 'online'）
+let reportSourceFilter = 'all';
+
+function setReportSource(src) {
+  if (src !== 'all' && src !== 'store' && src !== 'online') return;
+  reportSourceFilter = src;
+  // 更新 tab 樣式
+  document.querySelectorAll('#report-source-tabs .rs-tab').forEach(btn => {
+    const active = btn.dataset.src === src;
+    btn.style.background = active ? 'var(--primary)' : 'transparent';
+    btn.style.color = active ? '#fff' : 'var(--text-soft)';
+    btn.style.fontWeight = active ? '700' : '600';
+  });
+  renderReport();
+}
+
+// 依當前 tab 過濾交易
+function filterTxsBySource(txs) {
+  if (reportSourceFilter === 'store')  return txs.filter(t => !t.sourceOrderNo);
+  if (reportSourceFilter === 'online') return txs.filter(t => !!t.sourceOrderNo);
+  return txs;
+}
+
 function renderReport() {
   // 👗 自用單不計入營收/淨利/銷售統計
-  const salesTxs = transactions.filter(t => !t.isSelfUse);
+  // 🏪/📮 依當前選擇的來源 tab 過濾
+  const allSalesTxs = transactions.filter(t => !t.isSelfUse);
+  const salesTxs = filterTxsBySource(allSalesTxs);
   const selfUseTxs = transactions.filter(t => t.isSelfUse);
 
   const total = salesTxs.reduce((s, t) => s + t.total, 0);
@@ -7591,7 +7632,7 @@ function renderReport() {
   const todayTotal = todayTxs.reduce((s, t) => s + t.total, 0);
   const todayProfit = todayTxs.reduce((s, t) => s + getTxProfit(t), 0);
   const todayQty = todayTxs.reduce((sum, t) => sum + t.items.reduce((s, i) => s + i.qty, 0), 0);
-  const avgOrder = transactions.length ? Math.round(total / transactions.length) : 0;
+  const avgOrder = salesTxs.length ? Math.round(total / salesTxs.length) : 0;
   const profitMargin = total > 0 ? Math.round(totalProfit / total * 100) : 0;
   const todayMargin = todayTotal > 0 ? Math.round(todayProfit / todayTotal * 100) : 0;
 
@@ -7657,7 +7698,7 @@ function renderReport() {
     <div class="stat-card">
       <div class="sc-label">📊 累計銷售</div>
       <div class="sc-value">${fmt(total)}</div>
-      <div class="sc-sub">共 ${transactions.length} 筆 · 客單 ${fmt(avgOrder)}</div>
+      <div class="sc-sub">共 ${salesTxs.length} 筆 · 客單 ${fmt(avgOrder)}</div>
     </div>
     <div class="stat-card">
       <div class="sc-label">🏆 累計淨利</div>
@@ -7685,9 +7726,9 @@ function renderReport() {
   renderTrend();
 
 
-  // Top products
+  // Top products（依 tab 過濾、排除自用單）
   const pMap = {};
-  transactions.forEach(t => t.items.forEach(i => { pMap[i.name] = (pMap[i.name]||0) + i.qty * i.price; }));
+  salesTxs.forEach(t => t.items.forEach(i => { pMap[i.name] = (pMap[i.name]||0) + i.qty * i.price; }));
   const topPs = Object.entries(pMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const maxP = topPs[0]?.[1] || 1;
   document.getElementById('top-products-bar').innerHTML = topPs.map(([name, amt]) => `
@@ -7700,8 +7741,9 @@ function renderReport() {
   // Vendor stats
   renderVendorStats();
 
-  // Transactions table - with profit + actions
-  document.getElementById('tx-tbody').innerHTML = transactions.slice(0,20).map(t => {
+  // Transactions table - with profit + actions（依 tab 過濾）
+  const tableSource = filterTxsBySource(transactions);
+  document.getElementById('tx-tbody').innerHTML = tableSource.slice(0,20).map(t => {
     const profit = getTxProfit(t);
     const margin = t.total > 0 ? Math.round(profit / t.total * 100) : 0;
     return `
@@ -7826,10 +7868,17 @@ function renderVendorStats() {
 }
 
 function exportCSV() {
-  const rows = [['日期','類型','會員','商品','付款方式','小計','折扣','合計','淨利','獲得積分']];
-  transactions.forEach(t => rows.push([
+  // 依報表 tab 過濾（全部 / 店內 / 官網）
+  const scoped = filterTxsBySource(transactions);
+  const srcLabel = reportSourceFilter === 'store'  ? '店內'
+                 : reportSourceFilter === 'online' ? '官網'
+                 : '全部';
+  const rows = [['日期','類型','來源','訂單編號','會員','商品','付款方式','小計','折扣','合計','淨利','獲得積分']];
+  scoped.forEach(t => rows.push([
     t.date,
     t.isSelfUse ? '👗 自用' : '銷售',
+    t.sourceOrderNo ? '📮 官網' : '🏪 店內',
+    t.sourceOrderNo || '',
     t.memberName,
     t.items.map(i=>i.name+'x'+i.qty).join(';'),
     payMethodLabel(t.payMethod),
@@ -7838,9 +7887,9 @@ function exportCSV() {
   const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
-  a.download = '銷售報表_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.download = `銷售報表_${srcLabel}_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
-  toast('CSV 已匯出');
+  toast(`已匯出「${srcLabel}」CSV`);
 }
 
 // ======================== TRANSACTION EDIT ========================
