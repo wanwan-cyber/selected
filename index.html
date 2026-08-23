@@ -3391,11 +3391,13 @@ function togglePmFilterFeatured() {
   if (existing) { existing.remove(); return; }
   const btn = document.getElementById('pm-filter-featured-btn');
   if (!btn) return;
-  const list = products.filter(p => p.featured === true);
+  // 依 featuredOrder 排序（有值的先、越小越前面；沒值的排最後）
+  const list = products.filter(p => p.featured === true).slice()
+    .sort((a, b) => (a.featuredOrder ?? Infinity) - (b.featuredOrder ?? Infinity));
   // 建立彈窗
   const popup = document.createElement('div');
   popup.id = 'featured-list-popup';
-  popup.style.cssText = 'position:fixed;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px;max-width:360px;min-width:280px;max-height:70vh;overflow-y:auto;z-index:9999;';
+  popup.style.cssText = 'position:fixed;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px;max-width:400px;min-width:320px;max-height:70vh;overflow-y:auto;z-index:9999;';
   popup.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">
       <div style="font-weight:900;color:var(--primary);font-size:14px;">🌟 強推中的商品 (${list.length})</div>
@@ -3403,17 +3405,23 @@ function togglePmFilterFeatured() {
     </div>
     ${list.length === 0
       ? '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">還沒有商品設為強推。<br>在商品表格點 ☆ 按鈕即可加入。</div>'
-      : list.map(p => `
-          <div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid rgba(0,0,0,.04);">
+      : `
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:6px 8px;background:rgba(212,151,104,.08);border-radius:6px;">💡 用 ↑↓ 調整順序 · 越上面的官網越前面顯示</div>
+        ${list.map((p, i) => `
+          <div style="display:flex;align-items:center;gap:6px;padding:8px 4px;border-bottom:1px solid rgba(0,0,0,.04);">
             ${p.images?.[0] || p.image ? `<div style="width:36px;height:36px;border-radius:6px;background:url('${(p.images?.[0] || p.image).replace(/'/g, "\\'")}') center/cover;border:1px solid var(--border);flex-shrink:0;"></div>` : `<div style="width:36px;height:36px;border-radius:6px;background:var(--surface2);flex-shrink:0;"></div>`}
             <div style="flex:1;min-width:0;overflow:hidden;">
-              <div style="font-weight:600;font-size:13px;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</div>
+              <div style="font-weight:600;font-size:13px;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${i + 1}. ${p.name}</div>
               <div style="font-size:11px;color:var(--text-muted);">$${p.price} · 庫存 ${getProductStock(p)}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <button onclick="moveFeatured('${p.id}', -1)" ${i === 0 ? 'disabled' : ''} title="往上" style="padding:2px 6px;background:${i === 0 ? '#f0f0f0' : 'var(--surface2)'};color:${i === 0 ? '#ccc' : 'var(--primary)'};border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:${i === 0 ? 'not-allowed' : 'pointer'};line-height:1;">▲</button>
+              <button onclick="moveFeatured('${p.id}', 1)"  ${i === list.length - 1 ? 'disabled' : ''} title="往下" style="padding:2px 6px;background:${i === list.length - 1 ? '#f0f0f0' : 'var(--surface2)'};color:${i === list.length - 1 ? '#ccc' : 'var(--primary)'};border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:${i === list.length - 1 ? 'not-allowed' : 'pointer'};line-height:1;">▼</button>
             </div>
             <button onclick="document.getElementById('featured-list-popup')?.remove(); openProductModal('${p.id}');" title="編輯" style="padding:4px 10px;background:var(--surface2);color:var(--primary);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">編輯</button>
             <button onclick="toggleProductFeatured('${p.id}'); togglePmFilterFeatured(); togglePmFilterFeatured();" title="取消強推" style="padding:4px 8px;background:transparent;color:#D49768;border:1px solid #D49768;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">☆</button>
           </div>
-        `).join('')
+        `).join('')}`
     }
   `;
   document.body.appendChild(popup);
@@ -3431,6 +3439,26 @@ function togglePmFilterFeatured() {
       }
     });
   }, 0);
+}
+
+// ↑↓ 移動強推順序：delta = -1 往上、+1 往下
+// 交換後重新賦值 0,1,2,... 讓 featuredOrder 一直是連續整數
+function moveFeatured(id, delta) {
+  const featured = products.filter(p => p.featured === true).slice()
+    .sort((a, b) => (a.featuredOrder ?? Infinity) - (b.featuredOrder ?? Infinity));
+  const i = featured.findIndex(p => p.id === id);
+  if (i < 0) return;
+  const j = i + delta;
+  if (j < 0 || j >= featured.length) return;
+  // 交換陣列位置
+  [featured[i], featured[j]] = [featured[j], featured[i]];
+  // 全部重新編號（避免混雜 undefined 讓排序不穩）
+  featured.forEach((p, idx) => { p.featuredOrder = idx; });
+  save('pos_products', products);
+  // 重繪 popup + 主表格
+  const popup = document.getElementById('featured-list-popup');
+  if (popup) { popup.remove(); togglePmFilterFeatured(); }
+  renderProductsTable();
 }
 
 function updatePmFilterCount(shown, total) {
@@ -3840,6 +3868,16 @@ function loadPmMaterial(str) {
   updatePmMaterialString();
 }
 
+// 計算 featuredOrder：已有值就沿用、新啟用就排到最後、關掉就不設值
+function computeFeaturedOrder(existingProduct, willBeFeatured, excludeId) {
+  if (!willBeFeatured) return undefined;
+  if (typeof existingProduct?.featuredOrder === 'number') return existingProduct.featuredOrder;
+  const orders = products
+    .filter(p => p.featured === true && p.id !== excludeId)
+    .map(p => p.featuredOrder ?? -1);
+  return orders.length ? Math.max(...orders) + 1 : 0;
+}
+
 // 靜默儲存（切換時用，不彈 toast、不關 modal）
 function saveProductSilent() {
   const name = document.getElementById('pm-name').value.trim();
@@ -3872,6 +3910,7 @@ function saveProductSilent() {
     note: document.getElementById('pm-note').value.trim(),
     onlineShop: document.getElementById('pm-online-shop').checked,
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推
+    featuredOrder: computeFeaturedOrder(existing, document.getElementById('pm-featured').checked, editProductId), // ★ 保留/沿用強推順序
     createdAt: existing?.createdAt || Date.now(), // ★ 保留原本的上架時間戳
     material: document.getElementById('pm-material').value.trim(), // ★ 材質
     materialDesc: document.getElementById('pm-material-desc').value.trim(), // ★ 手動材質分析
@@ -4197,6 +4236,7 @@ function saveProduct() {
     note: document.getElementById('pm-note').value.trim(),
     onlineShop: document.getElementById('pm-online-shop').checked,
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推：勾選後永遠排最前
+    featuredOrder: computeFeaturedOrder(existing, document.getElementById('pm-featured').checked, editProductId), // ★ 保留/沿用強推順序
     createdAt: existing?.createdAt || Date.now(), // ★ 上架時間戳，供官網「新品排序」用
     material: document.getElementById('pm-material').value.trim(), // ★ 材質（顯示在官網詳情頁）
     materialDesc: document.getElementById('pm-material-desc').value.trim(), // ★ 手動材質分析（覆蓋官網自動生成）
@@ -4238,6 +4278,13 @@ function toggleProductFeatured(id) {
   if (idx < 0) return;
   const newState = !products[idx].featured;
   products[idx].featured = newState;
+  // ★ 新加入強推 → 排到最後（順序 = 現有 max + 1，避免搶到別人已排好的位置）
+  if (newState) {
+    const existingOrders = products
+      .filter(p => p.featured === true && p.id !== id)
+      .map(p => p.featuredOrder ?? -1);
+    products[idx].featuredOrder = existingOrders.length ? Math.max(...existingOrders) + 1 : 0;
+  }
   save('pos_products', products);
   renderProductsTable(); renderProducts();
   updatePmFilterFeaturedBtn(); // ★ 同步更新篩選按鈕的總數
