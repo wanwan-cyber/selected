@@ -1632,6 +1632,17 @@
           <span style="color:#D49768;">💡 提示：想主打的季節商品、促銷款可打勾；不用可再取消。</span>
         </div>
       </div>
+      <!-- 🛍 預購商品開關 -->
+      <div class="form-group" style="padding:12px 14px;background:linear-gradient(135deg,rgba(139,111,71,.10),rgba(139,111,71,.03));border-radius:8px;border:1px solid rgba(139,111,71,.35);">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;color:var(--primary);font-weight:700;margin:0;">
+          <input type="checkbox" id="pm-preorder" style="width:20px;height:20px;cursor:pointer;accent-color:#8B6F47;flex-shrink:0;">
+          <span>🛍 預購商品</span>
+        </label>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;margin-left:30px;line-height:1.5;">
+          勾選後,此商品會被歸類到官網的「🛍 預購商品」專區,一般商品列表不會出現。<br>
+          <span style="color:#8B6F47;">💡 預購品不看庫存,官網一律顯示「接受預購中」,客人可下任意數量。到貨後再另行通知。</span>
+        </div>
+      </div>
       <div class="form-group"><label>備註</label><textarea id="pm-note" rows="2" style="resize:vertical;"></textarea></div>
     </div>
     <div class="modal-foot">
@@ -3608,6 +3619,8 @@ function openProductModal(id) {
   document.getElementById('pm-online-shop').checked = p?.onlineShop === true;
   // 強推開關：舊資料 undefined → 預設 false
   document.getElementById('pm-featured').checked = p?.featured === true;
+  // ★ 預購商品開關：舊資料 undefined → 預設 false
+  document.getElementById('pm-preorder').checked = p?.preorder === true;
   // 載入照片陣列（相容舊資料：若 images 不存在但 image 存在則轉一張）
   if (p?.images && Array.isArray(p.images)) {
     pmImages = [...p.images];
@@ -3803,6 +3816,7 @@ function saveProductSilent() {
     createdAt: existing?.createdAt || Date.now(), // ★ 保留原本的上架時間戳
     material: document.getElementById('pm-material').value.trim(), // ★ 材質
     materialDesc: document.getElementById('pm-material-desc').value.trim(), // ★ 手動材質分析
+    preorder: document.getElementById('pm-preorder').checked, // ★ 預購商品
   };
   const idx = products.findIndex(x => x.id === editProductId);
   if (idx >= 0) {
@@ -4127,6 +4141,7 @@ function saveProduct() {
     createdAt: existing?.createdAt || Date.now(), // ★ 上架時間戳，供官網「新品排序」用
     material: document.getElementById('pm-material').value.trim(), // ★ 材質（顯示在官網詳情頁）
     materialDesc: document.getElementById('pm-material-desc').value.trim(), // ★ 手動材質分析（覆蓋官網自動生成）
+    preorder: document.getElementById('pm-preorder').checked, // ★ 預購商品：官網歸到預購專區，不看庫存
   };
   if (editProductId) {
     const idx = products.findIndex(x => x.id === editProductId);
