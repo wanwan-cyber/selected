@@ -1163,6 +1163,12 @@
         </div>
         <!-- 🔍 商品篩選工具列 -->
         <div style="background:#faf7f2;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
+          <!-- 第 0 列：類型 tab（全部 / 一般 / 🎀 預購）-->
+          <div id="pm-type-tabs" style="display:flex;gap:6px;margin-bottom:8px;padding:4px;background:#fff;border:1px solid var(--border);border-radius:8px;">
+            <button type="button" data-type=""         onclick="setPmType('')"         class="pm-type-tab active" style="flex:1;padding:7px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;background:var(--primary);color:#fff;font-weight:700;transition:.15s;">全部 <span id="pm-type-count-all" style="opacity:.85;">(0)</span></button>
+            <button type="button" data-type="regular"  onclick="setPmType('regular')"  class="pm-type-tab"        style="flex:1;padding:7px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;background:transparent;color:var(--text-soft);font-weight:600;transition:.15s;">一般 <span id="pm-type-count-regular" style="opacity:.7;">(0)</span></button>
+            <button type="button" data-type="preorder" onclick="setPmType('preorder')" class="pm-type-tab"        style="flex:1;padding:7px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;background:transparent;color:#8B6F47;font-weight:600;transition:.15s;">🎀 預購 <span id="pm-type-count-preorder" style="opacity:.7;">(0)</span></button>
+          </div>
           <!-- 第一列：搜尋 + 廠商 + 排序 + 顯示件數 -->
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
             <input type="text" id="pm-filter-search" placeholder="🔍 搜尋商品名稱 / 款號 / 條碼"
@@ -1378,6 +1384,13 @@
             <button class="btn btn-outline" onclick="showPage('home-banner', this)">🎨 首頁廣告</button>
             <button class="btn btn-outline" onclick="loadOnlineOrders(true)" id="oo-refresh-btn">🔄 重新整理</button>
           </div>
+        </div>
+
+        <!-- 類型 tab（全部 / 一般 / 🎀 預購）-->
+        <div id="oo-type-tabs" style="display:flex;gap:6px;margin-bottom:8px;padding:4px;background:#fff;border:1px solid var(--border);border-radius:8px;">
+          <button type="button" data-otype=""         onclick="setOoType('')"         class="oo-type-tab active" style="flex:1;padding:7px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;background:var(--primary);color:#fff;font-weight:700;transition:.15s;">全部 <span id="oo-type-count-all" style="opacity:.85;">(0)</span></button>
+          <button type="button" data-otype="regular"  onclick="setOoType('regular')"  class="oo-type-tab"        style="flex:1;padding:7px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;background:transparent;color:var(--text-soft);font-weight:600;transition:.15s;">一般訂單 <span id="oo-type-count-regular" style="opacity:.7;">(0)</span></button>
+          <button type="button" data-otype="preorder" onclick="setOoType('preorder')" class="oo-type-tab"        style="flex:1;padding:7px 10px;border:none;border-radius:5px;font-size:12px;cursor:pointer;background:transparent;color:#8B6F47;font-weight:600;transition:.15s;">🎀 預購訂單 <span id="oo-type-count-preorder" style="opacity:.7;">(0)</span></button>
         </div>
 
         <!-- 篩選 tab -->
@@ -3255,11 +3268,12 @@ function renderProductsTable() {
       <td>${p.sizes.join('/') || '—'}</td>
       <td style="font-weight:800;color:var(--gold);font-variant-numeric:tabular-nums;">${fmt(p.price)}</td>
       <td>
-        <span class="badge ${stock===0?'badge-red':stock<=5?'badge-orange':'badge-green'}">
-          ${stock===0?'售完':stock<=5?'剩 '+stock:stock}
-        </span>
+        ${p.preorder === true
+          ? '<span class="badge" style="background:linear-gradient(135deg,#8B6F47,#A68968);color:#fff;">🎀 預購</span>'
+          : `<span class="badge ${stock===0?'badge-red':stock<=5?'badge-orange':'badge-green'}">${stock===0?'售完':stock<=5?'剩 '+stock:stock}</span>`}
       </td>
       <td style="text-align:right;white-space:nowrap;">
+        ${p.preorder === true ? `<button class="btn btn-sm" onclick="convertPreorderToRegular('${p.id}')" title="貨到了，轉為一般商品並輸入庫存" style="background:#8B6F47;color:#fff;border:none;">🎀→📦 到貨</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">編輯</button>
         <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">刪除</button>
       </td>
@@ -3269,6 +3283,7 @@ function renderProductsTable() {
   if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
   if (typeof refreshPmFilterVendorOptions === 'function') refreshPmFilterVendorOptions();
   if (typeof updatePmFilterFeaturedBtn === 'function') updatePmFilterFeaturedBtn();
+  if (typeof updatePmTypeCounts === 'function') updatePmTypeCounts();
 }
 
 // ============================================================
@@ -3278,11 +3293,46 @@ let pmFilters = {
   search: '',
   cat: '',       // '' = 全部
   vendor: '',    // '' = 全部
+  type: '',      // '' = 全部, 'regular' = 一般（非預購）, 'preorder' = 預購
   sort: 'default',
 };
 
+// 切換類型 tab
+function setPmType(type) {
+  if (type !== '' && type !== 'regular' && type !== 'preorder') return;
+  pmFilters.type = type;
+  // 更新 tab 樣式
+  document.querySelectorAll('#pm-type-tabs .pm-type-tab').forEach(btn => {
+    const active = btn.dataset.type === type;
+    const isPreorder = btn.dataset.type === 'preorder';
+    btn.style.background = active ? (isPreorder ? '#8B6F47' : 'var(--primary)') : 'transparent';
+    btn.style.color = active ? '#fff' : (isPreorder ? '#8B6F47' : 'var(--text-soft)');
+    btn.style.fontWeight = active ? '700' : '600';
+  });
+  renderProductsTable();
+  renderPmFilterCatChips();
+  updatePmTypeCounts();
+}
+
+// 更新 tab 上的件數 badge
+function updatePmTypeCounts() {
+  const all = products.length;
+  const preorder = products.filter(p => p.preorder === true).length;
+  const regular = all - preorder;
+  const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = `(${n})`; };
+  setCount('pm-type-count-all', all);
+  setCount('pm-type-count-regular', regular);
+  setCount('pm-type-count-preorder', preorder);
+}
+
 function getFilteredProductsForPM() {
   let list = [...products];
+  // 類型：全部 / 一般 / 預購
+  if (pmFilters.type === 'preorder') {
+    list = list.filter(p => p.preorder === true);
+  } else if (pmFilters.type === 'regular') {
+    list = list.filter(p => p.preorder !== true);
+  }
   const s = (pmFilters.search || '').trim().toLowerCase();
   if (s) {
     list = list.filter(p =>
@@ -3312,13 +3362,16 @@ function applyPmFilters() {
   renderProductsTable();
   renderPmFilterCatChips(); // 更新 chip 上的件數
   updatePmFilterFeaturedBtn();
+  updatePmTypeCounts();
 }
 
 function clearPmFilters() {
-  pmFilters = { search: '', cat: '', vendor: '', sort: 'default' };
+  pmFilters = { search: '', cat: '', vendor: '', type: '', sort: 'default' };
   const s = document.getElementById('pm-filter-search'); if (s) s.value = '';
   const v = document.getElementById('pm-filter-vendor'); if (v) v.value = '';
   const o = document.getElementById('pm-filter-sort');   if (o) o.value = 'default';
+  // reset type tab to '全部'
+  setPmType('');
   renderPmFilterCatChips();
   renderProductsTable();
   updatePmFilterFeaturedBtn();
@@ -3383,7 +3436,13 @@ function togglePmFilterFeatured() {
 function updatePmFilterCount(shown, total) {
   const el = document.getElementById('pm-filter-count');
   if (!el) return;
-  el.textContent = shown === total ? `共 ${total} 件` : `顯示 ${shown} / ${total} 件`;
+  // 🎀 商品數量以「一般商品」為主，預購另計顯示
+  const preorderCount = products.filter(p => p.preorder === true).length;
+  const regularTotal = total - preorderCount;
+  const preorderNote = preorderCount > 0 ? ` <span style="color:#8B6F47;">· 另有 ${preorderCount} 件預購</span>` : '';
+  el.innerHTML = shown === total
+    ? `共 ${regularTotal} 件${preorderNote}`
+    : `顯示 ${shown} / ${regularTotal} 件${preorderNote}`;
   el.style.color = shown < total ? 'var(--gold)' : 'var(--text-muted)';
   el.style.fontWeight = shown < total ? '700' : '400';
 }
@@ -4183,6 +4242,21 @@ function toggleProductFeatured(id) {
   renderProductsTable(); renderProducts();
   updatePmFilterFeaturedBtn(); // ★ 同步更新篩選按鈕的總數
   toast(newState ? `「${products[idx].name}」已設為官網強推 🌟` : `「${products[idx].name}」已取消強推`, newState ? 'success' : 'warn');
+}
+
+// 🎀→📦 預購商品到貨：轉為一般商品，保留所有資料，開 modal 讓妳輸入庫存
+function convertPreorderToRegular(id) {
+  const idx = products.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const p = products[idx];
+  if (!p.preorder) { toast('這已經是一般商品', 'warn'); return; }
+  if (!confirm(`「${p.name}」到貨了嗎？\n\n將轉為一般商品，其他資料（照片、顏色、尺寸、材質…）全部保留，只需接著輸入庫存數量。`)) return;
+  products[idx].preorder = false;
+  save('pos_products', products);
+  renderProductsTable();
+  toast(`「${p.name}」已轉為一般商品，請輸入庫存 📦`, 'success');
+  // 開 modal 讓她直接填庫存
+  openProductModal(id);
 }
 
 // 批量上架/下架所有商品
@@ -5663,7 +5737,9 @@ function deleteCoupon(id) {
 // ======================== SOLD OUT PAGE ========================
 function renderSoldOut() {
   const filter = document.getElementById('so-filter').value;
-  let list = products.filter(p => {
+  // 🎀 排除預購品：預購品本來就沒有實體庫存，不算「售完」也不用進補貨清單
+  const realStockProducts = products.filter(p => p.preorder !== true);
+  let list = realStockProducts.filter(p => {
     const stock = getProductStock(p);
     if (filter === 'full') return stock === 0;
     if (filter === 'low') return stock > 0 && stock <= 5;
@@ -5673,13 +5749,13 @@ function renderSoldOut() {
   // 排序：售完優先、再低庫存
   list.sort((a, b) => getProductStock(a) - getProductStock(b));
 
-  // 統計
-  const soldOutCount = products.filter(p => getProductStock(p) === 0).length;
-  const lowStockCount = products.filter(p => {
+  // 統計（不含預購品）
+  const soldOutCount = realStockProducts.filter(p => getProductStock(p) === 0).length;
+  const lowStockCount = realStockProducts.filter(p => {
     const s = getProductStock(p);
     return s > 0 && s <= 5;
   }).length;
-  const soldOutValue = products
+  const soldOutValue = realStockProducts
     .filter(p => getProductStock(p) === 0)
     .reduce((s, p) => s + (p.price || 0), 0);
 
@@ -7840,7 +7916,7 @@ function renderVendorStats() {
   el.innerHTML = '<div class="vendor-grid">' + sorted.map(([vname, v]) => {
     const margin = v.soldAmt > 0 ? Math.round(v.profit / v.soldAmt * 100) : 0;
     const topThree = Object.entries(v.topProducts).sort((a,b)=>b[1]-a[1]).slice(0,3);
-    const productCount = products.filter(p => (p.vendor||'未指定廠商') === vname).length;
+    const productCount = products.filter(p => (p.vendor||'未指定廠商') === vname && p.preorder !== true).length;
     return `
       <div class="vendor-card">
         <div class="v-head">
@@ -8128,6 +8204,42 @@ if (appSettings.syncEnabled && appSettings.syncUrl) {
 // ============================================================
 let onlineOrders = [];
 let ooCurrentFilter = 'all';
+let ooTypeFilter = ''; // '' = 全部；'regular' = 一般；'preorder' = 預購
+
+// 判斷訂單是否含預購商品（items 內任一 productId 對應的商品 preorder === true）
+function orderHasPreorder(order) {
+  if (!order || !Array.isArray(order.items)) return false;
+  return order.items.some(item => {
+    const p = products.find(x => x.id === item.productId);
+    return p && p.preorder === true;
+  });
+}
+
+function setOoType(type) {
+  if (type !== '' && type !== 'regular' && type !== 'preorder') return;
+  ooTypeFilter = type;
+  // 更新 tab 樣式
+  document.querySelectorAll('#oo-type-tabs .oo-type-tab').forEach(btn => {
+    const active = btn.dataset.otype === type;
+    const isPreorder = btn.dataset.otype === 'preorder';
+    btn.style.background = active ? (isPreorder ? '#8B6F47' : 'var(--primary)') : 'transparent';
+    btn.style.color = active ? '#fff' : (isPreorder ? '#8B6F47' : 'var(--text-soft)');
+    btn.style.fontWeight = active ? '700' : '600';
+  });
+  renderOnlineOrders();
+}
+
+function updateOoTypeCounts() {
+  // 排除已取消訂單（跟狀態 tab 的計算基準一致）
+  const active = onlineOrders.filter(o => o.status !== 'cancelled');
+  const preorder = active.filter(o => orderHasPreorder(o)).length;
+  const all = active.length;
+  const regular = all - preorder;
+  const setCount = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = `(${n})`; };
+  setCount('oo-type-count-all', all);
+  setCount('oo-type-count-regular', regular);
+  setCount('oo-type-count-preorder', preorder);
+}
 let currentChatOrderNo = null;
 let currentChatMessages = [];
 let ooMessagesMeta = {}; // { orderNo: { count, latestFromCustomer, latestTimestamp } }
@@ -8710,6 +8822,12 @@ function updateOnlineOrdersBadge() {
 
 function getFilteredOrders() {
   let list = onlineOrders.slice();
+  // 類型（一般/預購）先過濾一輪
+  if (ooTypeFilter === 'preorder') {
+    list = list.filter(o => orderHasPreorder(o));
+  } else if (ooTypeFilter === 'regular') {
+    list = list.filter(o => !orderHasPreorder(o));
+  }
   // 已取消訂單有獨立區，不出現在其他 tab（除了「已取消」tab 本身）
   if (ooCurrentFilter === 'cancelled') {
     list = list.filter(o => o.status === 'cancelled');
@@ -8731,11 +8849,18 @@ function getFilteredOrders() {
 }
 
 function renderOnlineOrders() {
-  // 篩選 tabs
+  // 類型 tab 件數（全部/一般/預購）
+  updateOoTypeCounts();
+  // 狀態 tab 件數（要在當前類型 filter 底下計算，才不會誤導）
+  const typeFiltered = onlineOrders.filter(o => {
+    if (ooTypeFilter === 'preorder') return orderHasPreorder(o);
+    if (ooTypeFilter === 'regular')  return !orderHasPreorder(o);
+    return true;
+  });
   const tabs = document.getElementById('oo-filter-tabs');
-  const counts = { all: onlineOrders.filter(o => o.status !== 'cancelled').length };
-  OO_STATUS_ORDER.forEach(s => { counts[s] = onlineOrders.filter(o => (o.status || 'unpaid') === s).length; });
-  const cancelledCount = onlineOrders.filter(o => o.status === 'cancelled').length;
+  const counts = { all: typeFiltered.filter(o => o.status !== 'cancelled').length };
+  OO_STATUS_ORDER.forEach(s => { counts[s] = typeFiltered.filter(o => (o.status || 'unpaid') === s).length; });
+  const cancelledCount = typeFiltered.filter(o => o.status === 'cancelled').length;
   tabs.innerHTML = `
     <button class="oo-tab ${ooCurrentFilter === 'all' ? 'active' : ''}" onclick="setOoFilter('all')">全部 <span class="oo-tab-count">${counts.all}</span></button>
     ${OO_STATUS_ORDER.map(s => `
@@ -8765,6 +8890,11 @@ function renderOrderCard(o) {
   const isNewMember = !members.some(m => m.phone === o.phone && m.note && !m.note.includes(o.orderNo));
   const memberBadge = members.some(m => m.phone === o.phone)
     ? '<span class="oo-member-badge exist">會員</span>'
+    : '';
+  // ★ 預購訂單標記（訂單內任一品項是預購商品）
+  const isPreorderOrder = orderHasPreorder(o);
+  const preorderBadge = isPreorderOrder
+    ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:2px 7px;background:linear-gradient(135deg,#8B6F47,#A68968);color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;border-radius:5px;vertical-align:middle;">🎀 預購</span>'
     : '';
   const timeAgo = getTimeAgo(o.createdAt);
 
@@ -8805,7 +8935,7 @@ function renderOrderCard(o) {
   return `
     <div class="oo-card">
       <div class="oo-card-header">
-        <div class="oo-order-no" onclick="copyText('${escapeHtmlOO(o.orderNo || '')}')" title="點擊複製">${escapeHtmlOO(o.orderNo || '')}</div>
+        <div class="oo-order-no" onclick="copyText('${escapeHtmlOO(o.orderNo || '')}')" title="點擊複製">${escapeHtmlOO(o.orderNo || '')}${preorderBadge}</div>
         <div class="oo-status-badge oo-status-${status}">${statusLabel}</div>
       </div>
       <div class="oo-card-body">
