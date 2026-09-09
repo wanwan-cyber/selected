@@ -1189,6 +1189,7 @@
             </select>
             <span id="pm-filter-count" style="font-size:12px;color:var(--text-muted);white-space:nowrap;"></span>
             <button id="pm-filter-featured-btn" class="btn btn-outline btn-sm" onclick="togglePmFilterFeatured()" title="只顯示官網強推的商品" style="font-size:12px;white-space:nowrap;">🌟 強推 <span id="pm-filter-featured-count">(0)</span></button>
+            <button id="pm-bulk-btn" class="btn btn-outline btn-sm" onclick="togglePmBulkMode()" title="批次勾選商品後統一設為強推或取消" style="font-size:12px;white-space:nowrap;">✅ 批次選取</button>
             <button class="btn btn-outline btn-sm" onclick="clearPmFilters()" style="font-size:12px;">✕ 清除</button>
           </div>
           <!-- 第二列：分類 chips -->
@@ -3273,6 +3274,8 @@ function renderProductsTable() {
           : `<span class="badge ${stock===0?'badge-red':stock<=5?'badge-orange':'badge-green'}">${stock===0?'售完':stock<=5?'剩 '+stock:stock}</span>`}
       </td>
       <td style="text-align:right;white-space:nowrap;">
+        ${pmBulkMode ? `<input type="checkbox" class="pm-bulk-check" data-id="${p.id}" ${pmBulkSelected.has(p.id) ? 'checked' : ''} onchange="togglePmBulkPick('${p.id}')" style="width:20px;height:20px;cursor:pointer;accent-color:#c9a84c;margin-right:4px;vertical-align:middle;">` : ''}
+        <button class="btn btn-sm" onclick="toggleProductFeatured('${p.id}')" title="${p.featured ? '取消強推' : '設為官網強推'}" style="background:${p.featured ? '#c9a84c' : 'transparent'};color:${p.featured ? '#fff' : '#c9a84c'};border:1px solid #c9a84c;padding:4px 9px;font-size:14px;line-height:1;">${p.featured ? '⭐' : '☆'}</button>
         ${p.preorder === true ? `<button class="btn btn-sm" onclick="convertPreorderToRegular('${p.id}')" title="貨到了，轉為一般商品並輸入庫存" style="background:#8B6F47;color:#fff;border:none;">🎀→📦 到貨</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">編輯</button>
         <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">刪除</button>
@@ -3284,6 +3287,7 @@ function renderProductsTable() {
   if (typeof refreshPmFilterVendorOptions === 'function') refreshPmFilterVendorOptions();
   if (typeof updatePmFilterFeaturedBtn === 'function') updatePmFilterFeaturedBtn();
   if (typeof updatePmTypeCounts === 'function') updatePmTypeCounts();
+  if (typeof renderPmBulkBar === 'function') renderPmBulkBar();
 }
 
 // ============================================================
@@ -3406,22 +3410,21 @@ function togglePmFilterFeatured() {
     ${list.length === 0
       ? '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">還沒有商品設為強推。<br>在商品表格點 ☆ 按鈕即可加入。</div>'
       : `
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:6px 8px;background:rgba(212,151,104,.08);border-radius:6px;">💡 用 ↑↓ 調整順序 · 越上面的官網越前面顯示</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:6px 8px;background:rgba(212,151,104,.08);border-radius:6px;">💡 按住左邊的 ⋮⋮ 拖動排序 · 越上面官網越前面</div>
+        <div id="featured-drag-list">
         ${list.map((p, i) => `
-          <div style="display:flex;align-items:center;gap:6px;padding:8px 4px;border-bottom:1px solid rgba(0,0,0,.04);">
+          <div class="featured-drag-item" data-id="${p.id}" data-idx="${i}" style="display:flex;align-items:center;gap:6px;padding:10px 4px;border-bottom:1px solid rgba(0,0,0,.04);background:#fff;">
+            <div class="featured-drag-handle" style="cursor:grab;padding:8px 6px;color:var(--text-muted);font-size:16px;line-height:1;touch-action:none;user-select:none;font-weight:700;">⋮⋮</div>
             ${p.images?.[0] || p.image ? `<div style="width:36px;height:36px;border-radius:6px;background:url('${(p.images?.[0] || p.image).replace(/'/g, "\\'")}') center/cover;border:1px solid var(--border);flex-shrink:0;"></div>` : `<div style="width:36px;height:36px;border-radius:6px;background:var(--surface2);flex-shrink:0;"></div>`}
             <div style="flex:1;min-width:0;overflow:hidden;">
-              <div style="font-weight:600;font-size:13px;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${i + 1}. ${p.name}</div>
+              <div style="font-weight:600;font-size:13px;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span class="fdi-num">${i + 1}</span>. ${p.name}</div>
               <div style="font-size:11px;color:var(--text-muted);">$${p.price} · 庫存 ${getProductStock(p)}</div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:2px;">
-              <button onclick="moveFeatured('${p.id}', -1)" ${i === 0 ? 'disabled' : ''} title="往上" style="padding:2px 6px;background:${i === 0 ? '#f0f0f0' : 'var(--surface2)'};color:${i === 0 ? '#ccc' : 'var(--primary)'};border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:${i === 0 ? 'not-allowed' : 'pointer'};line-height:1;">▲</button>
-              <button onclick="moveFeatured('${p.id}', 1)"  ${i === list.length - 1 ? 'disabled' : ''} title="往下" style="padding:2px 6px;background:${i === list.length - 1 ? '#f0f0f0' : 'var(--surface2)'};color:${i === list.length - 1 ? '#ccc' : 'var(--primary)'};border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:${i === list.length - 1 ? 'not-allowed' : 'pointer'};line-height:1;">▼</button>
             </div>
             <button onclick="document.getElementById('featured-list-popup')?.remove(); openProductModal('${p.id}');" title="編輯" style="padding:4px 10px;background:var(--surface2);color:var(--primary);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">編輯</button>
             <button onclick="toggleProductFeatured('${p.id}'); togglePmFilterFeatured(); togglePmFilterFeatured();" title="取消強推" style="padding:4px 8px;background:transparent;color:#D49768;border:1px solid #D49768;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">☆</button>
           </div>
-        `).join('')}`
+        `).join('')}
+        </div>`
     }
   `;
   document.body.appendChild(popup);
@@ -3439,6 +3442,99 @@ function togglePmFilterFeatured() {
       }
     });
   }, 0);
+  // ★ 拖曳排序：至少 2 筆才啟用
+  if (list.length > 1) initFeaturedDrag();
+}
+
+// ============================================================
+// 🌟 強推清單拖曳排序（pointer events，手機桌機通用）
+// ============================================================
+function initFeaturedDrag() {
+  const container = document.getElementById('featured-drag-list');
+  if (!container) return;
+  const items = Array.from(container.querySelectorAll('.featured-drag-item'));
+  if (items.length < 2) return;
+  const itemHeight = items[0].getBoundingClientRect().height;
+
+  items.forEach((item, initialIdx) => {
+    const handle = item.querySelector('.featured-drag-handle');
+    if (!handle) return;
+    let dragging = false, startY = 0, currentShift = 0;
+
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      startY = e.clientY;
+      currentShift = 0;
+      item.style.transition = 'none';
+      item.style.boxShadow = '0 8px 20px rgba(212,151,104,.35)';
+      item.style.background = '#FFFDFA';
+      item.style.borderRadius = '8px';
+      item.style.zIndex = '10';
+      item.style.position = 'relative';
+      handle.style.cursor = 'grabbing';
+      try { handle.setPointerCapture(e.pointerId); } catch(err) {}
+    });
+
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const dy = e.clientY - startY;
+      item.style.transform = 'translateY(' + dy + 'px)';
+      const shift = Math.round(dy / itemHeight);
+      const newIdx = Math.max(0, Math.min(items.length - 1, initialIdx + shift));
+      const clampedShift = newIdx - initialIdx;
+      if (clampedShift !== currentShift) {
+        currentShift = clampedShift;
+        // 其他項目讓位動畫
+        items.forEach((other, i) => {
+          if (other === item) return;
+          other.style.transition = 'transform .15s ease';
+          if (clampedShift > 0 && i > initialIdx && i <= newIdx) {
+            other.style.transform = 'translateY(-' + itemHeight + 'px)';
+          } else if (clampedShift < 0 && i >= newIdx && i < initialIdx) {
+            other.style.transform = 'translateY(' + itemHeight + 'px)';
+          } else {
+            other.style.transform = '';
+          }
+        });
+      }
+    });
+
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      const finalShift = currentShift;
+      const newIdx = initialIdx + finalShift;
+      // 清理視覺
+      items.forEach(it => { it.style.transition = ''; it.style.transform = ''; });
+      item.style.boxShadow = '';
+      item.style.background = '';
+      item.style.borderRadius = '';
+      item.style.zIndex = '';
+      item.style.position = '';
+      handle.style.cursor = 'grab';
+      // 提交排序
+      if (finalShift !== 0) {
+        const productId = item.dataset.id;
+        const featuredList = products.filter(p => p.featured === true).slice()
+          .sort((a, b) => (a.featuredOrder ?? Infinity) - (b.featuredOrder ?? Infinity));
+        const currentIdx = featuredList.findIndex(p => p.id === productId);
+        if (currentIdx >= 0) {
+          const [moved] = featuredList.splice(currentIdx, 1);
+          featuredList.splice(newIdx, 0, moved);
+          featuredList.forEach((p, idx) => { p.featuredOrder = idx; });
+          save('pos_products', products);
+          renderProductsTable();
+        }
+        // 重繪 popup（順便更新編號 1. 2. 3.）
+        const popup = document.getElementById('featured-list-popup');
+        if (popup) { popup.remove(); togglePmFilterFeatured(); }
+      }
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+  });
 }
 
 // ↑↓ 移動強推順序：delta = -1 往上、+1 往下
@@ -3866,6 +3962,97 @@ function loadPmMaterial(str) {
     }
   });
   updatePmMaterialString();
+}
+
+
+// ============================================================
+// 批次選取模式：一次勾多筆商品、統一設為/取消強推
+// ============================================================
+let pmBulkMode = false;
+let pmBulkSelected = new Set();
+
+function togglePmBulkMode() {
+  pmBulkMode = !pmBulkMode;
+  if (!pmBulkMode) pmBulkSelected.clear();
+  const btn = document.getElementById('pm-bulk-btn');
+  if (btn) {
+    if (pmBulkMode) {
+      btn.style.background = '#c9a84c';
+      btn.style.color = '#fff';
+      btn.textContent = '✕ 結束批次';
+    } else {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.innerHTML = '✅ 批次選取';
+    }
+  }
+  renderProductsTable();
+  renderPmBulkBar();
+}
+
+function togglePmBulkPick(id) {
+  if (pmBulkSelected.has(id)) pmBulkSelected.delete(id);
+  else pmBulkSelected.add(id);
+  renderPmBulkBar();
+}
+
+function pmBulkSelectAll() {
+  // 選當前篩選結果的全部
+  const list = getFilteredProductsForPM();
+  list.forEach(p => pmBulkSelected.add(p.id));
+  renderProductsTable();
+  renderPmBulkBar();
+}
+
+function pmBulkClearAll() {
+  pmBulkSelected.clear();
+  renderProductsTable();
+  renderPmBulkBar();
+}
+
+function pmBulkApplyFeatured(makeFeatured) {
+  if (pmBulkSelected.size === 0) { toast('尚未選擇商品', 'warn'); return; }
+  const ids = Array.from(pmBulkSelected);
+  let changed = 0;
+  ids.forEach(id => {
+    const idx = products.findIndex(x => x.id === id);
+    if (idx < 0) return;
+    if (products[idx].featured === makeFeatured) return; // 已經是目標狀態
+    products[idx].featured = makeFeatured;
+    if (makeFeatured) {
+      const orders = products.filter(p => p.featured === true && p.id !== id).map(p => p.featuredOrder ?? -1);
+      products[idx].featuredOrder = orders.length ? Math.max(...orders) + 1 : 0;
+    }
+    changed++;
+  });
+  save('pos_products', products);
+  toast(makeFeatured ? `✅ ${changed} 件商品已設為強推 🌟` : `${changed} 件商品已取消強推`, 'success');
+  pmBulkSelected.clear();
+  renderProductsTable();
+  renderPmBulkBar();
+  if (typeof updatePmFilterFeaturedBtn === 'function') updatePmFilterFeaturedBtn();
+  if (typeof renderProducts === 'function') renderProducts();
+}
+
+function renderPmBulkBar() {
+  let bar = document.getElementById('pm-bulk-bar');
+  if (!pmBulkMode || pmBulkSelected.size === 0) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'pm-bulk-bar';
+    bar.style.cssText = 'position:fixed;left:16px;right:16px;bottom:16px;max-width:640px;margin:0 auto;background:#fff;border:2px solid #c9a84c;border-radius:14px;box-shadow:0 8px 24px rgba(26,46,37,.2);padding:12px 14px;z-index:9998;display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `
+    <div style="font-weight:800;color:var(--primary);font-size:14px;flex:1;min-width:140px;">已選 <span style="color:#c9a84c;font-size:16px;">${pmBulkSelected.size}</span> 件</div>
+    <button onclick="pmBulkSelectAll()" class="btn btn-outline btn-sm" style="font-size:12px;">全選</button>
+    <button onclick="pmBulkClearAll()" class="btn btn-outline btn-sm" style="font-size:12px;">清空</button>
+    <button onclick="pmBulkApplyFeatured(true)" class="btn btn-sm" style="background:#c9a84c;color:#fff;border:none;font-weight:800;">⭐ 設為強推</button>
+    <button onclick="pmBulkApplyFeatured(false)" class="btn btn-outline btn-sm" style="border-color:#c9a84c;color:#c9a84c;font-weight:700;">☆ 取消強推</button>
+  `;
 }
 
 // 計算 featuredOrder：已有值就沿用、新啟用就排到最後、關掉就不設值
