@@ -3447,7 +3447,7 @@ function togglePmFilterFeatured() {
 }
 
 // ============================================================
-// 🌟 強推清單拖曳排序（pointer events，手機桌機通用）
+// 🌟 強推清單拖曳排序（document 全域監聽版，不會卡住）
 // ============================================================
 function initFeaturedDrag() {
   const container = document.getElementById('featured-drag-list');
@@ -3456,16 +3456,91 @@ function initFeaturedDrag() {
   if (items.length < 2) return;
   const itemHeight = items[0].getBoundingClientRect().height;
 
+  // 拖曳狀態（一次只能拖一個）
+  let state = null; // { item, handle, initialIdx, startY, startScroll, currentShift }
+
+  function onMove(e) {
+    if (!state) return;
+    e.preventDefault();
+    // 補償 popup 拖曳中因自動捲動造成的位移
+    const popup = document.getElementById('featured-list-popup');
+    const scrollDelta = popup ? (popup.scrollTop - state.startScroll) : 0;
+    const dy = (e.clientY - state.startY) + scrollDelta;
+    state.item.style.transform = 'translateY(' + dy + 'px)';
+    const shift = Math.round(dy / itemHeight);
+    const newIdx = Math.max(0, Math.min(items.length - 1, state.initialIdx + shift));
+    const clampedShift = newIdx - state.initialIdx;
+    if (clampedShift !== state.currentShift) {
+      state.currentShift = clampedShift;
+      items.forEach((other, i) => {
+        if (other === state.item) return;
+        other.style.transition = 'transform .15s ease';
+        if (clampedShift > 0 && i > state.initialIdx && i <= newIdx) {
+          other.style.transform = 'translateY(-' + itemHeight + 'px)';
+        } else if (clampedShift < 0 && i >= newIdx && i < state.initialIdx) {
+          other.style.transform = 'translateY(' + itemHeight + 'px)';
+        } else {
+          other.style.transform = '';
+        }
+      });
+    }
+    // 拖到 popup 邊緣自動捲動
+    if (popup) {
+      const r = popup.getBoundingClientRect();
+      const zone = 50;
+      if (e.clientY < r.top + zone) popup.scrollTop -= 10;
+      else if (e.clientY > r.bottom - zone) popup.scrollTop += 10;
+    }
+  }
+
+  function onUp(e) {
+    if (!state) return;
+    const { item, handle, initialIdx, currentShift } = state;
+    const finalShift = currentShift;
+    const newIdx = initialIdx + finalShift;
+    const productId = item.dataset.id;
+    // 清理視覺
+    items.forEach(it => { it.style.transition = ''; it.style.transform = ''; });
+    item.style.boxShadow = '';
+    item.style.background = '';
+    item.style.borderRadius = '';
+    item.style.zIndex = '';
+    item.style.position = '';
+    if (handle) handle.style.cursor = 'grab';
+    // 解除全域監聽
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    document.removeEventListener('pointercancel', onUp);
+    state = null;
+    // 提交排序
+    if (finalShift !== 0) {
+      const featuredList = products.filter(p => p.featured === true).slice()
+        .sort((a, b) => (a.featuredOrder ?? Infinity) - (b.featuredOrder ?? Infinity));
+      const currentIdx = featuredList.findIndex(p => p.id === productId);
+      if (currentIdx >= 0) {
+        const [moved] = featuredList.splice(currentIdx, 1);
+        featuredList.splice(newIdx, 0, moved);
+        featuredList.forEach((p, idx) => { p.featuredOrder = idx; });
+        save('pos_products', products);
+        renderProductsTable();
+      }
+      const popup = document.getElementById('featured-list-popup');
+      if (popup) { popup.remove(); togglePmFilterFeatured(); }
+    }
+  }
+
   items.forEach((item, initialIdx) => {
     const handle = item.querySelector('.featured-drag-handle');
     if (!handle) return;
-    let dragging = false, startY = 0, currentShift = 0;
-
     handle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      dragging = true;
-      startY = e.clientY;
-      currentShift = 0;
+      const popup = document.getElementById('featured-list-popup');
+      state = {
+        item, handle, initialIdx,
+        startY: e.clientY,
+        startScroll: popup ? popup.scrollTop : 0,
+        currentShift: 0,
+      };
       item.style.transition = 'none';
       item.style.boxShadow = '0 8px 20px rgba(212,151,104,.35)';
       item.style.background = '#FFFDFA';
@@ -3473,67 +3548,11 @@ function initFeaturedDrag() {
       item.style.zIndex = '10';
       item.style.position = 'relative';
       handle.style.cursor = 'grabbing';
-      try { handle.setPointerCapture(e.pointerId); } catch(err) {}
+      // 全域監聽：手指移到任何地方都能繼續追蹤
+      document.addEventListener('pointermove', onMove, { passive: false });
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
     });
-
-    handle.addEventListener('pointermove', (e) => {
-      if (!dragging) return;
-      e.preventDefault();
-      const dy = e.clientY - startY;
-      item.style.transform = 'translateY(' + dy + 'px)';
-      const shift = Math.round(dy / itemHeight);
-      const newIdx = Math.max(0, Math.min(items.length - 1, initialIdx + shift));
-      const clampedShift = newIdx - initialIdx;
-      if (clampedShift !== currentShift) {
-        currentShift = clampedShift;
-        // 其他項目讓位動畫
-        items.forEach((other, i) => {
-          if (other === item) return;
-          other.style.transition = 'transform .15s ease';
-          if (clampedShift > 0 && i > initialIdx && i <= newIdx) {
-            other.style.transform = 'translateY(-' + itemHeight + 'px)';
-          } else if (clampedShift < 0 && i >= newIdx && i < initialIdx) {
-            other.style.transform = 'translateY(' + itemHeight + 'px)';
-          } else {
-            other.style.transform = '';
-          }
-        });
-      }
-    });
-
-    function endDrag(e) {
-      if (!dragging) return;
-      dragging = false;
-      const finalShift = currentShift;
-      const newIdx = initialIdx + finalShift;
-      // 清理視覺
-      items.forEach(it => { it.style.transition = ''; it.style.transform = ''; });
-      item.style.boxShadow = '';
-      item.style.background = '';
-      item.style.borderRadius = '';
-      item.style.zIndex = '';
-      item.style.position = '';
-      handle.style.cursor = 'grab';
-      // 提交排序
-      if (finalShift !== 0) {
-        const productId = item.dataset.id;
-        const featuredList = products.filter(p => p.featured === true).slice()
-          .sort((a, b) => (a.featuredOrder ?? Infinity) - (b.featuredOrder ?? Infinity));
-        const currentIdx = featuredList.findIndex(p => p.id === productId);
-        if (currentIdx >= 0) {
-          const [moved] = featuredList.splice(currentIdx, 1);
-          featuredList.splice(newIdx, 0, moved);
-          featuredList.forEach((p, idx) => { p.featuredOrder = idx; });
-          save('pos_products', products);
-          renderProductsTable();
-        }
-        // 重繪 popup（順便更新編號 1. 2. 3.）
-        const popup = document.getElementById('featured-list-popup');
-        if (popup) { popup.remove(); togglePmFilterFeatured(); }
-      }
-    }
-    handle.addEventListener('pointerup', endDrag);
-    handle.addEventListener('pointercancel', endDrag);
   });
 }
 
