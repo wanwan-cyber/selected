@@ -1158,6 +1158,7 @@
             <button class="btn btn-outline" onclick="openBatchModal()">📦 批次新增</button>
             <button class="btn btn-outline" onclick="bulkOnlineShop(true)" title="將所有商品標記為官網上架" style="border-color:var(--gold);color:var(--gold);">🛒 全部上架</button>
             <button class="btn btn-outline" onclick="bulkOnlineShop(false)" title="將所有商品從官網下架">☐ 全部下架</button>
+            <button class="btn btn-outline" onclick="openTagColorModal()" title="管理商品標籤名稱與顏色（同步到官網）">🏷 標籤顏色</button>
             <button class="btn btn-primary" onclick="openProductModal()">＋ 新增商品</button>
           </div>
         </div>
@@ -2250,6 +2251,29 @@
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('receipt-modal')">關閉</button>
       <button class="btn btn-primary" onclick="printReceipt()">🖨 列印</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🏷️ 標籤顏色管理 modal -->
+<div class="modal-overlay" id="tag-color-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3>🏷 標籤顏色設定</h3>
+      <button class="modal-close" onclick="closeModal('tag-color-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
+        💡 這裡管理商品標籤的名稱與顏色。<br>
+        變更會同步到<strong>官網商品卡片與詳情頁</strong>顯示的小標籤。<br>
+        名稱最多 8 字，顏色會顯示成商品卡上的膠囊小色塊。
+      </div>
+      <div id="tag-color-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="tcAddRow()" style="margin-top:10px;width:100%;">＋ 新增標籤</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('tag-color-modal')">取消</button>
+      <button class="btn btn-primary" onclick="tcSave()" id="tc-save-btn">💾 儲存並同步</button>
     </div>
   </div>
 </div>
@@ -4109,6 +4133,7 @@ function renderPmBulkBar() {
 // ============================================================
 // 🏷️ 商品標籤（官網卡上顯示的小色塊）
 // ============================================================
+// 預設標籤（首次載入或雲端無資料時的備援）
 const PM_DEFAULT_TAGS = [
   { name: '新品',     color: '#7BA482' },
   { name: '限量',     color: '#C87879' },
@@ -4117,15 +4142,18 @@ const PM_DEFAULT_TAGS = [
   { name: '精選',     color: '#A683B0' },
 ];
 
+// 目前使用中的標籤（優先讀 localStorage，之後 syncDownload 會從雲端更新覆蓋）
+let PM_TAGS = load('pos_tag_colors', PM_DEFAULT_TAGS.map(t => ({...t})));
+
 // 目前 modal 中選了哪些標籤
 let pmSelectedTags = [];
 
 function renderPmTagsGrid() {
   const grid = document.getElementById('pm-tags-grid');
   if (!grid) return;
-  // 內建 + 目前額外的自訂標籤
-  const custom = pmSelectedTags.filter(t => !PM_DEFAULT_TAGS.find(d => d.name === t));
-  const all = [...PM_DEFAULT_TAGS, ...custom.map(t => ({ name: t, color: '#8B6F47' }))];
+  // 目前使用中的標籤 + 這個商品有選但列表裡沒有的舊標籤
+  const custom = pmSelectedTags.filter(t => !PM_TAGS.find(d => d.name === t));
+  const all = [...PM_TAGS, ...custom.map(t => ({ name: t, color: '#8B6F47' }))];
   grid.innerHTML = all.map(t => {
     const on = pmSelectedTags.includes(t.name);
     return `<button type="button" onclick="togglePmTag('${t.name.replace(/'/g,"\\'")}')" style="padding:5px 12px;border:1.5px solid ${t.color};border-radius:14px;background:${on ? t.color : 'transparent'};color:${on ? '#fff' : t.color};font-size:12px;font-weight:700;cursor:pointer;transition:.15s;">${on ? '✓ ' : ''}${t.name}</button>`;
@@ -4148,6 +4176,156 @@ function addCustomTag() {
   pmSelectedTags.push(v);
   input.value = '';
   renderPmTagsGrid();
+}
+
+// ============================================================
+// 🏷️ 標籤顏色管理（modal 內編輯 + 同步雲端）
+// ============================================================
+let _tcEditing = []; // modal 內編輯中的暫存陣列（[{name, color}, ...]）
+
+function openTagColorModal() {
+  // 從目前 PM_TAGS 複製一份到暫存（避免直接改到）
+  _tcEditing = PM_TAGS.map(t => ({ name: t.name, color: t.color }));
+  if (_tcEditing.length === 0) {
+    _tcEditing = PM_DEFAULT_TAGS.map(t => ({ name: t.name, color: t.color }));
+  }
+  renderTagColorList();
+  openModal('tag-color-modal');
+}
+
+function renderTagColorList() {
+  const el = document.getElementById('tag-color-list');
+  if (!el) return;
+  if (_tcEditing.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;background:#faf7f2;border-radius:8px;">尚無標籤，點下方「＋ 新增標籤」開始</div>';
+    return;
+  }
+  el.innerHTML = _tcEditing.map((t, i) => `
+    <div style="display:flex;gap:8px;align-items:center;padding:10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+      <input type="color" value="${t.color}" onchange="tcUpdate(${i},'color',this.value)" title="點擊挑選顏色" style="width:44px;height:36px;border:1px solid var(--border);padding:2px;cursor:pointer;border-radius:6px;background:#fff;flex-shrink:0;">
+      <input type="text" value="${escapeHtml(t.name)}" oninput="tcUpdate(${i},'name',this.value)" maxlength="8" placeholder="標籤名稱" style="flex:1;min-width:80px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <div style="padding:5px 12px;background:${t.color};color:#fff;border-radius:12px;font-size:11px;font-weight:800;white-space:nowrap;flex-shrink:0;min-width:52px;text-align:center;letter-spacing:.3px;">${escapeHtml(t.name || '預覽')}</div>
+      <button type="button" onclick="tcRemove(${i})" title="刪除此標籤" style="background:transparent;border:1px solid var(--danger);color:var(--danger);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;">🗑️</button>
+    </div>
+  `).join('');
+}
+
+function tcUpdate(idx, field, val) {
+  if (!_tcEditing[idx]) return;
+  _tcEditing[idx][field] = val;
+  // 只有 color 或 name 變才需要重繪預覽（打字時 name 也要即時預覽）
+  renderTagColorList();
+  // 保持焦點在剛才編輯的欄位
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#tag-color-list > div');
+    if (rows[idx]) {
+      const input = rows[idx].querySelector(field === 'name' ? 'input[type="text"]' : 'input[type="color"]');
+      if (input && field === 'name') {
+        input.focus();
+        // 游標移到最後
+        const v = input.value;
+        input.value = '';
+        input.value = v;
+      }
+    }
+  }, 0);
+}
+
+function tcAddRow() {
+  _tcEditing.push({ name: '', color: '#8B6F47' });
+  renderTagColorList();
+  // 自動聚焦到新一列的名稱欄
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#tag-color-list > div');
+    const last = rows[rows.length - 1];
+    if (last) {
+      const input = last.querySelector('input[type="text"]');
+      if (input) input.focus();
+    }
+  }, 0);
+}
+
+function tcRemove(idx) {
+  _tcEditing.splice(idx, 1);
+  renderTagColorList();
+}
+
+async function tcSave() {
+  // 驗證 + 清理
+  const cleaned = _tcEditing
+    .map(t => ({ name: (t.name || '').trim(), color: t.color || '#8B6F47' }))
+    .filter(t => t.name);
+
+  // 檢查名稱重複
+  const seen = new Set();
+  for (const t of cleaned) {
+    if (seen.has(t.name)) { toast(`標籤名稱重複：${t.name}`, 'warn'); return; }
+    seen.add(t.name);
+  }
+
+  const btn = document.getElementById('tc-save-btn');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 儲存中…'; }
+
+  // 先更新本地
+  PM_TAGS = cleaned.map(t => ({ name: t.name, color: t.color }));
+  save('pos_tag_colors', PM_TAGS);
+
+  // 同步到雲端（如果有設定 syncUrl 就試著送）
+  let cloudOk = false;
+  let cloudErr = '';
+  if (appSettings.syncUrl) {
+    try {
+      const payload = {
+        action: 'saveTagColors',
+        tags: cleaned.map((t, i) => ({ name: t.name, color: t.color, order: i })),
+      };
+      const res = await fetchWithTimeout(appSettings.syncUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      }, 15000);
+      const data = await res.json();
+      if (data.ok) cloudOk = true;
+      else cloudErr = data.error || '未知錯誤';
+    } catch (e) {
+      cloudErr = e.message || String(e);
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+
+  // 商品編輯 modal 如果正開著，重繪一下
+  if (typeof renderPmTagsGrid === 'function') {
+    try { renderPmTagsGrid(); } catch(e) {}
+  }
+
+  closeModal('tag-color-modal');
+
+  if (cloudOk) {
+    toast(`✅ 已儲存並同步 ${cleaned.length} 個標籤`, 'success');
+  } else if (!appSettings.syncUrl) {
+    toast(`✅ 本地已儲存 ${cleaned.length} 個標籤（未設定雲端）`, 'success');
+  } else {
+    toast(`⚠️ 本地已存，雲端同步失敗：${cloudErr}`, 'warn');
+  }
+}
+
+// 從雲端讀取最新的標籤顏色（在 syncDownload 尾端呼叫）
+async function loadTagColors() {
+  if (!appSettings.syncUrl) return;
+  try {
+    const res = await fetchWithTimeout(appSettings.syncUrl + '?action=getTagColors&_t=' + Date.now(), {}, 15000);
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.tags) && data.tags.length > 0) {
+      PM_TAGS = data.tags.map(t => ({ name: t.name, color: t.color }));
+      save('pos_tag_colors', PM_TAGS);
+      // 商品編輯 modal 如果正開著，重繪一下
+      if (typeof renderPmTagsGrid === 'function') {
+        try { renderPmTagsGrid(); } catch(e) {}
+      }
+    }
+  } catch (e) { /* 靜默失敗、用 localStorage 或預設 */ }
 }
 
 // 計算 featuredOrder：已有值就沿用、新啟用就排到最後、關掉就不設值
@@ -5215,6 +5393,8 @@ async function syncDownload(showToast = false) {
 
     // 📊 順便拉一下商品觀看數（不阻塞主流程）
     loadViewCounts();
+    // 🏷️ 順便拉一下標籤顏色（不阻塞主流程）
+    loadTagColors();
     if (changed) {
       // 重新渲染各畫面
       renderCatBar(); renderProducts(); renderProductsTable();
