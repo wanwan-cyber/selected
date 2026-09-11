@@ -1657,7 +1657,36 @@
           <span style="color:#8B6F47;">💡 預購品不看庫存,官網一律顯示「接受預購中」,客人可下任意數量。到貨後再另行通知。</span>
         </div>
       </div>
-      <div class="form-group"><label>備註</label><textarea id="pm-note" rows="2" style="resize:vertical;"></textarea></div>
+      <!-- 📢 官網公開備註 -->
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:6px;">
+          <span>📢 官網公開備註</span>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">（客人在詳情頁看得到）</span>
+        </label>
+        <textarea id="pm-public-note" rows="2" style="resize:vertical;" placeholder="例：本款略偏小一號、建議大一碼；手洗冷水、不可漂白"></textarea>
+      </div>
+
+      <!-- 🏷️ 商品標籤 -->
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:6px;">
+          <span>🏷️ 商品標籤</span>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">（顯示在商品卡右上角）</span>
+        </label>
+        <div id="pm-tags-grid" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;"></div>
+        <div style="margin-top:6px;display:flex;gap:6px;">
+          <input type="text" id="pm-tag-custom" placeholder="自訂標籤（例：明星商品、經典款）" style="flex:1;padding:6px 10px;font-size:12px;border:1px solid var(--border);border-radius:6px;" maxlength="8">
+          <button type="button" class="btn btn-outline btn-sm" onclick="addCustomTag()" style="font-size:12px;white-space:nowrap;">+ 新增</button>
+        </div>
+      </div>
+
+      <!-- 🔒 內部備註 -->
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:6px;">
+          <span>🔒 內部備註</span>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:400;">（只有妳看得到、客人不會看到）</span>
+        </label>
+        <textarea id="pm-note" rows="2" style="resize:vertical;" placeholder="例：庫位 B-3；廠商 A 補貨慢、要提前叫貨"></textarea>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('product-modal')">取消</button>
@@ -3814,6 +3843,9 @@ function openProductModal(id) {
   document.getElementById('pm-price').value = p?.price || '';
   document.getElementById('pm-cost').value = p?.cost || '';
   document.getElementById('pm-note').value = p?.note || '';
+  document.getElementById('pm-public-note').value = p?.publicNote || '';
+  pmSelectedTags = Array.isArray(p?.tags) ? p.tags.slice() : [];
+  renderPmTagsGrid();
   document.getElementById('pm-link').value = p?.link || '';
   loadPmMaterial(p?.material); // ★ 材質網格（英文預設清單 + 自訂欄位）
   document.getElementById('pm-material-desc').value = p?.materialDesc || ''; // ★ 手動材質分析（覆蓋官網自動生成）
@@ -4074,6 +4106,50 @@ function renderPmBulkBar() {
   `;
 }
 
+// ============================================================
+// 🏷️ 商品標籤（官網卡上顯示的小色塊）
+// ============================================================
+const PM_DEFAULT_TAGS = [
+  { name: '新品',     color: '#7BA482' },
+  { name: '限量',     color: '#C87879' },
+  { name: '熱銷',     color: '#D49768' },
+  { name: '補貨中',   color: '#7E92A8' },
+  { name: '精選',     color: '#A683B0' },
+];
+
+// 目前 modal 中選了哪些標籤
+let pmSelectedTags = [];
+
+function renderPmTagsGrid() {
+  const grid = document.getElementById('pm-tags-grid');
+  if (!grid) return;
+  // 內建 + 目前額外的自訂標籤
+  const custom = pmSelectedTags.filter(t => !PM_DEFAULT_TAGS.find(d => d.name === t));
+  const all = [...PM_DEFAULT_TAGS, ...custom.map(t => ({ name: t, color: '#8B6F47' }))];
+  grid.innerHTML = all.map(t => {
+    const on = pmSelectedTags.includes(t.name);
+    return `<button type="button" onclick="togglePmTag('${t.name.replace(/'/g,"\\'")}')" style="padding:5px 12px;border:1.5px solid ${t.color};border-radius:14px;background:${on ? t.color : 'transparent'};color:${on ? '#fff' : t.color};font-size:12px;font-weight:700;cursor:pointer;transition:.15s;">${on ? '✓ ' : ''}${t.name}</button>`;
+  }).join('');
+}
+
+function togglePmTag(name) {
+  const i = pmSelectedTags.indexOf(name);
+  if (i >= 0) pmSelectedTags.splice(i, 1);
+  else pmSelectedTags.push(name);
+  renderPmTagsGrid();
+}
+
+function addCustomTag() {
+  const input = document.getElementById('pm-tag-custom');
+  const v = input.value.trim();
+  if (!v) return;
+  if (v.length > 8) { toast('標籤最多 8 字', 'warn'); return; }
+  if (pmSelectedTags.includes(v)) { toast('已有此標籤', 'warn'); return; }
+  pmSelectedTags.push(v);
+  input.value = '';
+  renderPmTagsGrid();
+}
+
 // 計算 featuredOrder：已有值就沿用、新啟用就排到最後、關掉就不設值
 function computeFeaturedOrder(existingProduct, willBeFeatured, excludeId) {
   if (!willBeFeatured) return undefined;
@@ -4114,6 +4190,8 @@ function saveProductSilent() {
     image: pmImages[0] || '',
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
+    publicNote: document.getElementById('pm-public-note').value.trim(),
+    tags: pmSelectedTags.slice(),
     onlineShop: document.getElementById('pm-online-shop').checked,
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推
     featuredOrder: computeFeaturedOrder(existing, document.getElementById('pm-featured').checked, editProductId), // ★ 保留/沿用強推順序
@@ -4440,6 +4518,8 @@ function saveProduct() {
     image: pmImages[0] || '', // 主圖向後相容
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
+    publicNote: document.getElementById('pm-public-note').value.trim(),
+    tags: pmSelectedTags.slice(),
     onlineShop: document.getElementById('pm-online-shop').checked,
     featured: document.getElementById('pm-featured').checked, // ★ 官網強推：勾選後永遠排最前
     featuredOrder: computeFeaturedOrder(existing, document.getElementById('pm-featured').checked, editProductId), // ★ 保留/沿用強推順序
