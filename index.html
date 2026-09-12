@@ -2239,6 +2239,58 @@
 </div>
 
 <!-- Receipt Modal -->
+<!-- 🎨 從照片取色 modal（v2.9.9） -->
+<div class="modal-overlay" id="color-picker-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h3>🎨 從照片取色</h3>
+      <button class="modal-close" onclick="closeModal('color-picker-modal')">×</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
+        💡 <strong>流程</strong>：選一張照片 → 點照片上的顏色 → 輸入顏色名稱 → 確認加入。
+      </div>
+
+      <!-- 照片選擇（縮圖） -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:6px;">1️⃣ 選一張照片來取色</div>
+        <div id="cp-thumbs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- Canvas 取色區 -->
+      <div id="cp-canvas-wrap" style="display:none;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:6px;">2️⃣ 點照片上想要的顏色（用手指或滑鼠）</div>
+        <div style="position:relative;background:#faf7f2;border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center;overflow:hidden;">
+          <canvas id="cp-canvas" style="max-width:100%;max-height:50vh;cursor:crosshair;touch-action:none;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.08);"></canvas>
+        </div>
+        <div id="cp-tip" style="font-size:11px;color:var(--text-muted);margin-top:6px;text-align:center;">點照片任何位置取色（可反覆重點）</div>
+      </div>
+
+      <!-- 取色結果 + 命名 -->
+      <div id="cp-result" style="display:none;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;padding:12px;margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:600;color:var(--primary);margin-bottom:8px;">3️⃣ 取到的顏色 + 命名</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+          <div id="cp-swatch" style="width:56px;height:56px;border-radius:50%;background:#8B6F47;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.15);flex-shrink:0;"></div>
+          <div style="flex:1;min-width:150px;">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px;">色碼</div>
+            <div id="cp-hex" style="font-family:monospace;font-size:15px;font-weight:800;color:var(--primary);letter-spacing:.5px;">#8B6F47</div>
+          </div>
+          <input type="color" id="cp-fine-tune" value="#8B6F47" onchange="cpAdjustColor(this.value)" title="微調色碼" style="width:44px;height:36px;border:1px solid var(--border);padding:2px;cursor:pointer;border-radius:6px;background:#fff;">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--primary);display:block;margin-bottom:4px;">顏色名稱（會顯示給客人看）</label>
+          <input type="text" id="cp-name" maxlength="10" placeholder="例：杏、卡其、藍花" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;box-sizing:border-box;">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">💡 已有這個名稱時會直接更新色碼（例：「杏」有色碼了，重新取色就會覆蓋）</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('color-picker-modal')">取消</button>
+      <button class="btn btn-primary" onclick="cpConfirm()" id="cp-confirm-btn" disabled>💾 加入這個顏色</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="receipt-modal">
   <div class="modal" style="max-width:380px;">
     <div class="modal-head">
@@ -2367,6 +2419,9 @@ let selectedMemberIds = new Set();
 let pendingProduct = null; // for variant selection
 let pmColors = [];
 let pmSizes = [];
+// ★ v2.9.9 每個顏色對應的 hex 色碼（例：{ 杏: '#E5C9A8' }）
+// 用 Object 結構的原因：可跟 pmColors 分離、向後相容舊資料（沒此欄位就退回純文字）
+let pmColorSwatches = {};
 let vmSelectedColor = '';
 let vmSelectedSize = '';
 
@@ -3892,6 +3947,8 @@ function openProductModal(id) {
   pmVendor = p?.vendor || '';
   pmColors = p ? [...(p.colors||[])] : [];
   pmSizes = p ? [...(p.sizes||[])] : [];
+  // ★ v2.9.9 載入色碼 map（舊商品沒有此欄位就是空 obj）
+  pmColorSwatches = p?.colorSwatches ? {...p.colorSwatches} : {};
   // 庫存：從現有 stockMap 載入，或從 stock 平均分配作為起始值
   if (p?.stockMap && Object.keys(p.stockMap).length > 0) {
     pmStockMap = { ...p.stockMap };
@@ -4328,6 +4385,138 @@ async function loadTagColors() {
   } catch (e) { /* 靜默失敗、用 localStorage 或預設 */ }
 }
 
+// ============================================================
+// 🎨 從照片取色（v2.9.9）
+// ============================================================
+// State：目前選擇的照片 index、目前取到的色碼
+let _cpSelectedImgIdx = -1;
+let _cpCurrentHex = '';
+let _cpImageEl = null;
+
+function openColorPickerFromPhoto() {
+  if (!pmImages || pmImages.length === 0) {
+    toast('請先上傳商品照片', 'warn');
+    return;
+  }
+  _cpSelectedImgIdx = -1;
+  _cpCurrentHex = '';
+  _cpImageEl = null;
+  document.getElementById('cp-canvas-wrap').style.display = 'none';
+  document.getElementById('cp-result').style.display = 'none';
+  document.getElementById('cp-name').value = '';
+  document.getElementById('cp-confirm-btn').disabled = true;
+  renderCpThumbs();
+  openModal('color-picker-modal');
+  // 只有一張照片：直接進入取色（省一步）
+  if (pmImages.length === 1) {
+    setTimeout(() => cpSelectImage(0), 100);
+  }
+}
+
+function renderCpThumbs() {
+  const el = document.getElementById('cp-thumbs');
+  el.innerHTML = pmImages.map((src, i) => `
+    <div onclick="cpSelectImage(${i})" style="width:64px;height:64px;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid ${_cpSelectedImgIdx === i ? 'var(--gold)' : 'transparent'};box-shadow:${_cpSelectedImgIdx === i ? '0 0 0 2px rgba(201,168,76,.3)' : '0 1px 3px rgba(0,0,0,.1)'};transition:.15s;">
+      <img src="${escapeHtml(src)}" style="width:100%;height:100%;object-fit:cover;pointer-events:none;">
+    </div>
+  `).join('');
+}
+
+function cpSelectImage(idx) {
+  _cpSelectedImgIdx = idx;
+  renderCpThumbs();
+  const src = pmImages[idx];
+  const canvas = document.getElementById('cp-canvas');
+  const wrap = document.getElementById('cp-canvas-wrap');
+  const tip = document.getElementById('cp-tip');
+  wrap.style.display = 'block';
+  tip.textContent = '⏳ 載入照片中...';
+
+  // 載入圖片到 canvas（Cloudinary 需要 crossOrigin='anonymous' 才能讀 pixel）
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    // 限制 canvas 顯示大小（螢幕限制），但保留完整解析度供 getImageData 用
+    const maxW = Math.min(canvas.parentElement.clientWidth - 16, 720);
+    const maxH = window.innerHeight * 0.5;
+    let cw = img.naturalWidth;
+    let ch = img.naturalHeight;
+    const ratio = Math.min(maxW / cw, maxH / ch, 1);
+    cw = Math.floor(cw * ratio);
+    ch = Math.floor(ch * ratio);
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, cw, ch);
+    _cpImageEl = img;
+    tip.textContent = '點照片任何位置取色（可反覆重點）';
+  };
+  img.onerror = () => {
+    tip.innerHTML = '<span style="color:var(--danger);">⚠️ 照片無法載入（可能因跨域限制）</span>';
+    _cpImageEl = null;
+  };
+  img.src = src;
+
+  // 綁定點擊事件（用 pointerdown 同時支援滑鼠 + 觸控）
+  canvas.onpointerdown = cpOnCanvasClick;
+}
+
+function cpOnCanvasClick(e) {
+  if (!_cpImageEl) return;
+  const canvas = e.currentTarget;
+  const rect = canvas.getBoundingClientRect();
+  // 計算點擊的 pixel 座標（考量 canvas 縮放）
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = Math.floor((e.clientX - rect.left) * scaleX);
+  const y = Math.floor((e.clientY - rect.top) * scaleY);
+  try {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const pixel = ctx.getImageData(x, y, 1, 1).data;
+    const hex = '#' + [pixel[0], pixel[1], pixel[2]].map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase();
+    cpSetColor(hex);
+  } catch (err) {
+    toast('無法讀取像素，請確認照片來源', 'warn');
+  }
+}
+
+function cpSetColor(hex) {
+  _cpCurrentHex = hex;
+  document.getElementById('cp-swatch').style.background = hex;
+  document.getElementById('cp-hex').textContent = hex;
+  document.getElementById('cp-fine-tune').value = hex;
+  document.getElementById('cp-result').style.display = 'block';
+  // 若名稱已填寫就開啟確認按鈕
+  const nameVal = document.getElementById('cp-name').value.trim();
+  document.getElementById('cp-confirm-btn').disabled = !nameVal;
+  // 綁定名稱輸入事件（首次呼叫時綁一次即可）
+  const nameInput = document.getElementById('cp-name');
+  if (!nameInput._bound) {
+    nameInput._bound = true;
+    nameInput.addEventListener('input', () => {
+      document.getElementById('cp-confirm-btn').disabled = !nameInput.value.trim() || !_cpCurrentHex;
+    });
+  }
+}
+
+// 微調取到的色碼（點小色卡系統選色器）
+function cpAdjustColor(hex) {
+  cpSetColor(hex.toUpperCase());
+}
+
+function cpConfirm() {
+  const name = document.getElementById('cp-name').value.trim();
+  if (!name || !_cpCurrentHex) return;
+  if (name.length > 10) { toast('顏色名稱最多 10 字', 'warn'); return; }
+  // 加到 pmColors（如果沒有的話）
+  if (!pmColors.includes(name)) pmColors.push(name);
+  // 存色碼
+  pmColorSwatches[name] = _cpCurrentHex;
+  renderPmVariantChips();
+  closeModal('color-picker-modal');
+  toast(`✅ 已加入「${name}」（${_cpCurrentHex}）`);
+}
+
 // 計算 featuredOrder：已有值就沿用、新啟用就排到最後、關掉就不設值
 function computeFeaturedOrder(existingProduct, willBeFeatured, excludeId) {
   if (!willBeFeatured) return undefined;
@@ -4362,6 +4551,8 @@ function saveProductSilent() {
     barcode: document.getElementById('pm-barcode').value.trim().toUpperCase(),
     price, cost: parseFloat(document.getElementById('pm-cost').value)||0,
     colors: [...pmColors], sizes: [...pmSizes],
+    // ★ v2.9.9 存色碼 map（被刪的顏色也要一起清）
+    colorSwatches: Object.fromEntries(pmColors.filter(c => pmColorSwatches[c]).map(c => [c, pmColorSwatches[c]])),
     stockMap: cleanStock,
     stock: calcStockTotal(cleanStock),
     images: [...pmImages],
@@ -4518,9 +4709,21 @@ function renderPmVariantChips() {
   const allColors = getAllColors();
   pmColors.forEach(c => { if (!allColors.includes(c)) allColors.unshift(c); });
   const colorChipsHtml = allColors.length
-    ? allColors.map(c => `<span class="chip ${pmColors.includes(c)?'selected':''}" onclick="togglePmVariant('color','${c.replace(/'/g,"\\'")}')">${c}</span>`).join('')
+    ? allColors.map(c => {
+        const swatch = pmColorSwatches[c];
+        const dotStyle = swatch
+          ? `background:${swatch};border:1px solid rgba(0,0,0,.15);`
+          : `background:repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50% / 8px 8px;border:1px solid var(--border);`;
+        return `<span class="chip ${pmColors.includes(c)?'selected':''}" onclick="togglePmVariant('color','${c.replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:5px;">
+          <span onclick="event.stopPropagation();openSwatchPicker('${c.replace(/'/g,"\\'")}')" title="點擊設定色碼" style="display:inline-block;width:14px;height:14px;border-radius:50%;${dotStyle};cursor:pointer;flex-shrink:0;"></span>
+          ${c}
+        </span>`;
+      }).join('')
     : '<span style="font-size:12px;color:var(--text-muted);">尚無顏色，請從下方新增</span>';
-  document.getElementById('pm-color-chips').innerHTML = colorChipsHtml + renderVariantOrderBar('color', pmColors);
+  const eyedropperBtn = pmImages.length > 0
+    ? `<button type="button" class="btn btn-outline btn-sm" onclick="openColorPickerFromPhoto()" style="margin-top:8px;">🎨 從照片取色</button>`
+    : `<div style="margin-top:8px;font-size:11px;color:var(--text-muted);">💡 先上傳照片即可使用「🎨 從照片取色」</div>`;
+  document.getElementById('pm-color-chips').innerHTML = colorChipsHtml + eyedropperBtn + renderVariantOrderBar('color', pmColors);
 
   const allSizes = getAllSizes();
   pmSizes.forEach(s => { if (!allSizes.includes(s)) allSizes.unshift(s); });
@@ -4529,6 +4732,26 @@ function renderPmVariantChips() {
     : '<span style="font-size:12px;color:var(--text-muted);">尚無尺寸，請從下方新增</span>';
   document.getElementById('pm-size-chips').innerHTML = sizeChipsHtml + renderVariantOrderBar('size', pmSizes);
   renderPmStockMatrix();
+}
+
+// ★ v2.9.9 點色點：直接開系統色卡改該顏色的色碼（不動照片流程）
+function openSwatchPicker(colorName) {
+  // 建立一個隱藏的 color input，觸發後拿值
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = pmColorSwatches[colorName] || '#8B6F47';
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  input.style.pointerEvents = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', () => {
+    pmColorSwatches[colorName] = input.value.toUpperCase();
+    renderPmVariantChips();
+    document.body.removeChild(input);
+    toast(`已設定「${colorName}」為 ${input.value.toUpperCase()}`);
+  }, { once: true });
+  // Safari 需要一點 delay 才能觸發
+  setTimeout(() => input.click(), 10);
 }
 
 // 已選項目的順序調整條（2 個以上才顯示）
@@ -4690,6 +4913,8 @@ function saveProduct() {
     barcode,
     price, cost: parseFloat(document.getElementById('pm-cost').value)||0,
     colors: [...pmColors], sizes: [...pmSizes],
+    // ★ v2.9.9 只存目前 pmColors 有的色碼，被刪掉的顏色也要一起清掉
+    colorSwatches: Object.fromEntries(pmColors.filter(c => pmColorSwatches[c]).map(c => [c, pmColorSwatches[c]])),
     stockMap: cleanStock,
     stock: calcStockTotal(cleanStock),
     images: [...pmImages],
