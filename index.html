@@ -1195,6 +1195,8 @@
           </div>
           <!-- 第二列：分類 chips -->
           <div id="pm-filter-cats" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+          <!-- 第三列：標籤 chips（v2.9.11） -->
+          <div id="pm-filter-tags" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
         </div>
         <div class="table-wrap">
           <table class="data-table" id="products-table">
@@ -2239,6 +2241,25 @@
 </div>
 
 <!-- Receipt Modal -->
+<!-- 🔍 按標籤看/管理商品 modal（v2.9.11） -->
+<div class="modal-overlay" id="tag-products-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h3>🔍 按標籤查看商品</h3>
+      <button class="modal-close" onclick="closeModal('tag-products-modal')">×</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid #A683B0;padding:8px 12px;border-radius:4px;">
+        💡 依標籤分組看所有被標記的商品。點商品旁的 ❌ 直接把該標籤從該商品移除（會立即生效並同步）。
+      </div>
+      <div id="tag-products-content"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('tag-products-modal')">關閉</button>
+    </div>
+  </div>
+</div>
+
 <!-- ⚙️ 管理中心 modal（v2.9.11 三合一：標籤 + 分類 + 商品顏色） -->
 <div class="modal-overlay" id="mgmt-center-modal">
   <div class="modal" style="max-width:640px;">
@@ -2261,6 +2282,10 @@
         </div>
         <div id="tag-color-list" style="display:flex;flex-direction:column;gap:8px;"></div>
         <button type="button" class="btn btn-outline btn-sm" onclick="tcAddRow()" style="margin-top:10px;width:100%;">＋ 新增標籤</button>
+        <div style="margin-top:12px;padding:10px;background:#faf7f2;border-radius:8px;border-left:3px solid #A683B0;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="openTagProductsModal()" style="width:100%;font-size:13px;color:#A683B0;border-color:#A683B0;">🔍 按標籤查看/取消商品</button>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5;">依標籤分組看所有被標記的商品，可直接 ❌ 取消單個商品的標籤</div>
+        </div>
         <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
           <button class="btn btn-primary" onclick="tcSave()" id="tc-save-btn">💾 儲存標籤變更</button>
         </div>
@@ -3465,6 +3490,83 @@ if (typeof escapeAttr !== 'function') {
   };
 }
 
+// ★ v2.9.11 按標籤查看/管理商品
+function openTagProductsModal() {
+  renderTagProductsList();
+  openModal('tag-products-modal');
+}
+
+function renderTagProductsList() {
+  const el = document.getElementById('tag-products-content');
+  if (!el) return;
+  // 依標籤分組：{ tagName: [products] }
+  const groups = {};
+  products.forEach(p => {
+    if (!Array.isArray(p.tags)) return;
+    p.tags.forEach(t => {
+      if (!t) return;
+      if (!groups[t]) groups[t] = [];
+      groups[t].push(p);
+    });
+  });
+  const tagNames = Object.keys(groups);
+  if (tagNames.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;background:#faf7f2;border-radius:8px;">尚無被標記的商品<br><span style="font-size:11px;">在商品列上點 ＋ 加標籤，或進商品編輯裡加</span></div>';
+    return;
+  }
+  // 排序：按 PM_TAGS 順序
+  const knownNames = (typeof PM_TAGS !== 'undefined' ? PM_TAGS : []).map(t => t.name);
+  const ordered = [
+    ...knownNames.filter(n => tagNames.includes(n)),
+    ...tagNames.filter(n => !knownNames.includes(n)).sort(),
+  ];
+  const getColor = (name) => {
+    const found = (typeof PM_TAGS !== 'undefined' ? PM_TAGS : []).find(t => t.name === name);
+    return found ? found.color : '#8B6F47';
+  };
+  el.innerHTML = ordered.map(tag => {
+    const color = getColor(tag);
+    const list = groups[tag];
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${color};color:#fff;border-radius:8px 8px 0 0;font-weight:700;font-size:13px;">
+          🏷 ${escapeHtml(tag)} <span style="opacity:.85;font-size:11px;font-weight:600;">(${list.length} 個商品)</span>
+        </div>
+        <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;background:#fff;">
+          ${list.map(p => {
+            const mainImg = (p.images && p.images.length) ? p.images[0] : (p.image || '');
+            const thumb = mainImg
+              ? `<div style="width:36px;height:36px;border-radius:6px;background:url('${mainImg.replace(/'/g, "\\'")}') center/cover;flex-shrink:0;"></div>`
+              : `<div style="width:36px;height:36px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--border);font-size:14px;flex-shrink:0;">🖼</div>`;
+            return `
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);">
+                ${thumb}
+                <div style="flex:1;min-width:0;font-size:13px;color:var(--primary);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '(無名稱)')}</div>
+                <button type="button" onclick="removeTagFromProduct('${p.id}','${tag.replace(/'/g,"\\'")}')" title="從此商品移除「${escapeAttr(tag)}」標籤" style="background:#fee;border:1px solid var(--danger);color:var(--danger);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">❌ 移除</button>
+              </div>
+            `;
+          }).join('').replace(/border-bottom:1px solid var\(--border\);(?=[^]*$)/, '')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 從某商品移除某個標籤，並重繪 modal + 主列表
+function removeTagFromProduct(pid, tagName) {
+  const p = products.find(x => x.id === pid);
+  if (!p || !Array.isArray(p.tags)) return;
+  const idx = p.tags.indexOf(tagName);
+  if (idx < 0) return;
+  p.tags.splice(idx, 1);
+  save('pos_products', products);
+  renderTagProductsList();
+  renderProductsTable();
+  toast(`已從「${p.name}」移除標籤 ${tagName}`);
+  if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
+  else if (typeof syncUpload === 'function') syncUpload();
+}
+
 function renderProductsTable() {
   const tbody = document.getElementById('products-tbody');
   // 🔍 套用篩選條件
@@ -3538,6 +3640,7 @@ function renderProductsTable() {
     : activeHtml + dividerRow + inactiveHtml;
   // 順便更新篩選 UI（分類件數、廠商選項、強推按鈕總數）
   if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
+  if (typeof renderPmFilterTagChips === 'function') renderPmFilterTagChips();
   if (typeof refreshPmFilterVendorOptions === 'function') refreshPmFilterVendorOptions();
   if (typeof updatePmFilterFeaturedBtn === 'function') updatePmFilterFeaturedBtn();
   if (typeof updatePmTypeCounts === 'function') updatePmTypeCounts();
@@ -3553,6 +3656,7 @@ let pmFilters = {
   cat: '',       // '' = 全部
   vendor: '',    // '' = 全部
   type: '',      // '' = 全部, 'regular' = 一般（非預購）, 'preorder' = 預購
+  tag: '',       // '' = 全部標籤（v2.9.11）
   sort: 'default',
 };
 
@@ -3602,6 +3706,8 @@ function getFilteredProductsForPM() {
   }
   if (pmFilters.cat) list = list.filter(p => (p.cat || '') === pmFilters.cat);
   if (pmFilters.vendor) list = list.filter(p => (p.vendor || '') === pmFilters.vendor);
+  // ★ v2.9.11 標籤篩選
+  if (pmFilters.tag) list = list.filter(p => Array.isArray(p.tags) && p.tags.includes(pmFilters.tag));
   // 排序
   switch (pmFilters.sort) {
     case 'name':      list.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'zh-Hant')); break;
@@ -3625,13 +3731,14 @@ function applyPmFilters() {
 }
 
 function clearPmFilters() {
-  pmFilters = { search: '', cat: '', vendor: '', type: '', sort: 'default' };
+  pmFilters = { search: '', cat: '', vendor: '', type: '', tag: '', sort: 'default' };
   const s = document.getElementById('pm-filter-search'); if (s) s.value = '';
   const v = document.getElementById('pm-filter-vendor'); if (v) v.value = '';
   const o = document.getElementById('pm-filter-sort');   if (o) o.value = 'default';
   // reset type tab to '全部'
   setPmType('');
   renderPmFilterCatChips();
+  renderPmFilterTagChips();
   renderProductsTable();
   updatePmFilterFeaturedBtn();
 }
@@ -3884,6 +3991,58 @@ function setPmFilterCat(cat) {
   renderProductsTable();
 }
 
+// ★ v2.9.11 標籤 chips（含件數，點一下切換該標籤篩選）
+function renderPmFilterTagChips() {
+  const el = document.getElementById('pm-filter-tags');
+  if (!el) return;
+  // 統計每個標籤的商品數（只算「上下文相符」的商品，跟分類篩選一樣的邏輯）
+  const baseList = products.filter(p => {
+    const s = (pmFilters.search || '').trim().toLowerCase();
+    if (s && !((p.name||'').toLowerCase().includes(s) || (p.sku||'').toLowerCase().includes(s) || (p.barcode||'').toLowerCase().includes(s))) return false;
+    if (pmFilters.vendor && (p.vendor || '') !== pmFilters.vendor) return false;
+    if (pmFilters.cat && (p.cat || '') !== pmFilters.cat) return false;
+    return true;
+  });
+  const tagCounts = {};
+  baseList.forEach(p => {
+    (Array.isArray(p.tags) ? p.tags : []).forEach(t => {
+      if (t) tagCounts[t] = (tagCounts[t] || 0) + 1;
+    });
+  });
+  // 排序：優先按 PM_TAGS 的順序（管理中心設定的順序），沒排到的按數量放後面
+  const knownNames = (typeof PM_TAGS !== 'undefined' ? PM_TAGS : []).map(t => t.name);
+  const usedTags = Object.keys(tagCounts);
+  const orderedTags = [
+    ...knownNames.filter(n => usedTags.includes(n)),
+    ...usedTags.filter(n => !knownNames.includes(n)).sort((a,b) => tagCounts[b] - tagCounts[a]),
+  ];
+  if (orderedTags.length === 0) { el.innerHTML = ''; return; }
+
+  const getColor = (name) => {
+    const found = (typeof PM_TAGS !== 'undefined' ? PM_TAGS : []).find(t => t.name === name);
+    return found ? found.color : '#8B6F47';
+  };
+  const chip = (label, count, value, active, color) => `
+    <button onclick="setPmFilterTag('${value.replace(/'/g,"\\'")}')" style="
+      padding:5px 12px;border-radius:14px;font-size:12px;cursor:pointer;font-family:inherit;
+      background:${active ? color : '#fff'};
+      color:${active ? '#fff' : color};
+      border:1.5px solid ${color};
+      font-weight:${active ? '700' : '600'};
+      white-space:nowrap;transition:.15s;
+    ">${label} <span style="opacity:.75;font-size:11px;">${count}</span></button>
+  `;
+  const isAll = !pmFilters.tag;
+  el.innerHTML = chip('🏷 全部標籤', baseList.length, '', isAll, '#8B6F47') +
+    orderedTags.map(t => chip(t, tagCounts[t], t, pmFilters.tag === t, getColor(t))).join('');
+}
+
+function setPmFilterTag(tag) {
+  pmFilters.tag = tag;
+  renderPmFilterTagChips();
+  renderProductsTable();
+}
+
 // 更新廠商下拉選單（新增/刪除商品時要重新載入）
 function refreshPmFilterVendorOptions() {
   const sel = document.getElementById('pm-filter-vendor');
@@ -3899,6 +4058,7 @@ function refreshPmFilterVendorOptions() {
 function initPmFilters() {
   refreshPmFilterVendorOptions();
   renderPmFilterCatChips();
+  renderPmFilterTagChips(); // ★ v2.9.11
 }
 
 // 內部狀態：當前選中的分類（單一）、廠商（單一）、顏色/尺寸（多個）、庫存對應表
