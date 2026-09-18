@@ -1158,8 +1158,7 @@
             <button class="btn btn-outline" onclick="openBatchModal()">📦 批次新增</button>
             <button class="btn btn-outline" onclick="bulkOnlineShop(true)" title="將所有商品標記為官網上架" style="border-color:var(--gold);color:var(--gold);">🛒 全部上架</button>
             <button class="btn btn-outline" onclick="bulkOnlineShop(false)" title="將所有商品從官網下架">☐ 全部下架</button>
-            <button class="btn btn-outline" onclick="openTagColorModal()" title="管理商品標籤名稱與顏色（同步到官網）">🏷 標籤顏色</button>
-            <button class="btn btn-outline" onclick="openCatManager()" title="重新命名或刪除分類（會更新所有該分類的商品）">🗂 分類管理</button>
+            <button class="btn btn-outline" onclick="openManagementCenter()" title="標籤、分類、商品顏色統一管理">⚙️ 管理中心</button>
             <button class="btn btn-primary" onclick="openProductModal()">＋ 新增商品</button>
           </div>
         </div>
@@ -2240,28 +2239,64 @@
 </div>
 
 <!-- Receipt Modal -->
-<!-- 🗂 分類管理 modal（v2.9.10） -->
-<div class="modal-overlay" id="cat-manager-modal">
-  <div class="modal" style="max-width:520px;">
+<!-- ⚙️ 管理中心 modal（v2.9.11 三合一：標籤 + 分類 + 商品顏色） -->
+<div class="modal-overlay" id="mgmt-center-modal">
+  <div class="modal" style="max-width:640px;">
     <div class="modal-head">
-      <h3>🗂 分類管理</h3>
-      <button class="modal-close" onclick="closeModal('cat-manager-modal')">×</button>
+      <h3>⚙️ 管理中心</h3>
+      <button class="modal-close" onclick="closeModal('mgmt-center-modal')">×</button>
     </div>
-    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
-      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
-        💡 <strong>改分類名稱</strong>：直接編輯框內名稱，儲存後所有商品跟著改。<br>
-        💡 <strong>刪除分類</strong>：點 🗑️，會問你分類裡的商品要移到哪。<br>
-        💡 <strong>合併分類</strong>：把 A 改成跟 B 一樣名稱，儲存後兩個會合併。
+    <div class="modal-body" style="padding:0;">
+      <!-- Tab 列 -->
+      <div id="mgmt-tabs" style="display:flex;gap:0;background:#faf7f2;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2;">
+        <button type="button" data-mgmt-tab="tags" onclick="mgmtSwitchTab('tags')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🏷 標籤</button>
+        <button type="button" data-mgmt-tab="cats" onclick="mgmtSwitchTab('cats')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🗂 分類</button>
+        <button type="button" data-mgmt-tab="colors" onclick="mgmtSwitchTab('colors')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🎨 商品顏色</button>
       </div>
-      <div id="cm-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-      <button type="button" class="btn btn-outline btn-sm" onclick="cmAddNew()" style="margin-top:10px;width:100%;">＋ 新增空分類</button>
+
+      <!-- Tab 1: 標籤 -->
+      <div id="mgmt-pane-tags" class="mgmt-pane" style="padding:16px;max-height:calc(70vh - 60px);overflow-y:auto;">
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
+          💡 商品標籤（顯示在官網商品卡右上角）。變更會同步到官網。名稱最多 8 字。
+        </div>
+        <div id="tag-color-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="tcAddRow()" style="margin-top:10px;width:100%;">＋ 新增標籤</button>
+        <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+          <button class="btn btn-primary" onclick="tcSave()" id="tc-save-btn">💾 儲存標籤變更</button>
+        </div>
+      </div>
+
+      <!-- Tab 2: 分類 -->
+      <div id="mgmt-pane-cats" class="mgmt-pane" style="display:none;padding:16px;max-height:calc(70vh - 60px);overflow-y:auto;">
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
+          💡 <strong>改名</strong>：直接改輸入框，儲存後所有商品跟著改 <strong>刪除</strong>：點 🗑️，會問要移到哪 <strong>合併</strong>：兩個改成同名 <strong>排序</strong>：▲▼
+        </div>
+        <div id="cm-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="cmAddNew()" style="margin-top:10px;width:100%;">＋ 新增空分類</button>
+        <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+          <button class="btn btn-primary" onclick="cmSave()" id="cm-save-btn">💾 儲存分類變更</button>
+        </div>
+      </div>
+
+      <!-- Tab 3: 商品顏色 -->
+      <div id="mgmt-pane-colors" class="mgmt-pane" style="display:none;padding:16px;max-height:calc(70vh - 60px);overflow-y:auto;">
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
+          💡 <strong>全域色卡</strong>：所有商品用過的顏色統一管理。<br>
+          設定後，新商品新增同名顏色時會自動套用色碼；已存在的商品保留原本設定（除非按下方「同步到所有商品」）。
+        </div>
+        <div id="color-palette-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" onclick="cpaApplyToAll()" title="把每個顏色的色卡強制套到所有商品上" style="font-size:11px;">🔄 同步到所有商品</button>
+          <button class="btn btn-primary" onclick="cpaSave()" id="cpa-save-btn">💾 儲存色卡</button>
+        </div>
+      </div>
     </div>
     <div class="modal-foot">
-      <button class="btn btn-outline" onclick="closeModal('cat-manager-modal')">取消</button>
-      <button class="btn btn-primary" onclick="cmSave()" id="cm-save-btn">💾 儲存變更</button>
+      <button class="btn btn-outline" onclick="closeModal('mgmt-center-modal')">關閉</button>
     </div>
   </div>
 </div>
+
 
 <!-- 🎨 從照片取色 modal（v2.9.9） -->
 <div class="modal-overlay" id="color-picker-modal">
@@ -2331,28 +2366,6 @@
   </div>
 </div>
 
-<!-- 🏷️ 標籤顏色管理 modal -->
-<div class="modal-overlay" id="tag-color-modal">
-  <div class="modal" style="max-width:560px;">
-    <div class="modal-head">
-      <h3>🏷 標籤顏色設定</h3>
-      <button class="modal-close" onclick="closeModal('tag-color-modal')">×</button>
-    </div>
-    <div class="modal-body">
-      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
-        💡 這裡管理商品標籤的名稱與顏色。<br>
-        變更會同步到<strong>官網商品卡片與詳情頁</strong>顯示的小標籤。<br>
-        名稱最多 8 字，顏色會顯示成商品卡上的膠囊小色塊。
-      </div>
-      <div id="tag-color-list" style="display:flex;flex-direction:column;gap:8px;"></div>
-      <button type="button" class="btn btn-outline btn-sm" onclick="tcAddRow()" style="margin-top:10px;width:100%;">＋ 新增標籤</button>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-outline" onclick="closeModal('tag-color-modal')">取消</button>
-      <button class="btn btn-primary" onclick="tcSave()" id="tc-save-btn">💾 儲存並同步</button>
-    </div>
-  </div>
-</div>
 
 <script>
 // ======================== DATA ========================
@@ -3380,6 +3393,78 @@ function isPmInactive(p) {
   return noStock || notListed;
 }
 
+// ★ v2.9.11 商品列上的行內標籤 chip（點一下切換）
+function renderInlineTagChips(p) {
+  const selected = Array.isArray(p.tags) ? p.tags : [];
+  // 排序：先目前 selected 但不在 PM_TAGS 的（保底），再 PM_TAGS 全部
+  const known = (typeof PM_TAGS !== 'undefined' ? PM_TAGS : []);
+  const knownNames = known.map(t => t.name);
+  const customSelected = selected.filter(t => !knownNames.includes(t));
+  const all = [
+    ...customSelected.map(t => ({ name: t, color: '#8B6F47' })),
+    ...known,
+  ];
+  if (all.length === 0) return '<span style="font-size:10px;color:var(--text-muted);">尚無可用標籤</span>';
+  return all.map(t => {
+    const on = selected.includes(t.name);
+    const style = on
+      ? `background:${t.color};color:#fff;border:1px solid ${t.color};`
+      : `background:transparent;color:${t.color};border:1px dashed ${t.color};opacity:.7;`;
+    return `<button type="button" onclick="event.stopPropagation();toggleProductTag('${p.id}','${t.name.replace(/'/g,"\\'")}')" title="${on ? '點擊移除' : '點擊加入'}" style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;transition:.15s;${style}">${on ? '✓' : '＋'} ${escapeHtml(t.name)}</button>`;
+  }).join('');
+}
+
+// ★ v2.9.11 商品列上的行內分類下拉（切換直接生效）
+function renderInlineCatSelect(p) {
+  const cats = getAllCats();
+  const options = cats.map(c =>
+    `<option value="${escapeAttr(c)}"${c === p.cat ? ' selected' : ''}>${escapeHtml(c)}</option>`
+  ).join('');
+  const currentInOptions = cats.includes(p.cat);
+  const missingOption = (p.cat && !currentInOptions)
+    ? `<option value="${escapeAttr(p.cat)}" selected>${escapeHtml(p.cat)}（未列表）</option>` : '';
+  return `<select onchange="updateProductCat('${p.id}', this.value)" onclick="event.stopPropagation()" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;max-width:110px;cursor:pointer;">
+    <option value=""${!p.cat ? ' selected' : ''}>（無分類）</option>
+    ${missingOption}
+    ${options}
+  </select>`;
+}
+
+// 切換單一商品的標籤（直接生效、觸發同步）
+function toggleProductTag(pid, tagName) {
+  const p = products.find(x => x.id === pid);
+  if (!p) return;
+  if (!Array.isArray(p.tags)) p.tags = [];
+  const idx = p.tags.indexOf(tagName);
+  if (idx >= 0) p.tags.splice(idx, 1);
+  else p.tags.push(tagName);
+  save('pos_products', products);
+  renderProductsTable();
+  if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
+  else if (typeof syncUpload === 'function') syncUpload();
+}
+
+// 更新單一商品的分類（下拉切換）
+function updateProductCat(pid, newCat) {
+  const p = products.find(x => x.id === pid);
+  if (!p) return;
+  p.cat = (newCat || '').trim();
+  save('pos_products', products);
+  renderProductsTable();
+  if (typeof renderCatBar === 'function') renderCatBar();
+  if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
+  if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
+  else if (typeof syncUpload === 'function') syncUpload();
+  toast(`分類已更新為「${newCat || '無分類'}」`, 'success');
+}
+
+// escapeAttr helper（若尚未定義）
+if (typeof escapeAttr !== 'function') {
+  window.escapeAttr = function(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
+}
+
 function renderProductsTable() {
   const tbody = document.getElementById('products-tbody');
   // 🔍 套用篩選條件
@@ -3407,6 +3492,7 @@ function renderProductsTable() {
           style="display:inline-block;margin-left:6px;padding:2px 8px;font-size:10px;border-radius:9px;font-weight:700;vertical-align:middle;letter-spacing:.3px;cursor:pointer;transition:all .15s;border:${p.onlineShop ? '1px solid var(--gold)' : '1px dashed var(--border)'};background:${p.onlineShop ? 'var(--gold)' : 'transparent'};color:${p.onlineShop ? '#fff' : 'var(--text-muted)'};box-shadow:${p.onlineShop ? '0 1px 3px rgba(201,168,76,.3)' : 'none'};"
         >${p.onlineShop ? '🛒 已上架' : '☐ 未上架'}</button>
         ${p.note ? '<br><span style="font-size:11px;color:var(--text-muted);">'+p.note+'</span>' : ''}
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${renderInlineTagChips(p)}</div>
       </td>
       <td style="text-align:center;">
         <button
@@ -3417,7 +3503,7 @@ function renderProductsTable() {
       </td>
       <td><span style="font-family:monospace;font-size:12px;color:var(--primary);font-weight:600;">${p.sku || '—'}</span></td>
       <td><span style="font-family:monospace;font-size:12px;color:var(--text-muted);">${p.barcode || '—'}</span></td>
-      <td>${p.cat || '—'}</td>
+      <td>${renderInlineCatSelect(p)}</td>
       <td>${p.vendor || '—'}</td>
       <td>${p.colors.join('、') || '—'}</td>
       <td>${p.sizes.join('/') || '—'}</td>
@@ -4313,16 +4399,6 @@ function addCustomTag() {
 // ============================================================
 let _tcEditing = []; // modal 內編輯中的暫存陣列（[{name, color}, ...]）
 
-function openTagColorModal() {
-  // 從目前 PM_TAGS 複製一份到暫存（避免直接改到）
-  _tcEditing = PM_TAGS.map(t => ({ name: t.name, color: t.color }));
-  if (_tcEditing.length === 0) {
-    _tcEditing = PM_DEFAULT_TAGS.map(t => ({ name: t.name, color: t.color }));
-  }
-  renderTagColorList();
-  openModal('tag-color-modal');
-}
-
 function renderTagColorList() {
   const el = document.getElementById('tag-color-list');
   if (!el) return;
@@ -4430,7 +4506,7 @@ async function tcSave() {
     try { renderPmTagsGrid(); } catch(e) {}
   }
 
-  closeModal('tag-color-modal');
+  // 不關 modal — 讓用戶可以切換到別的 tab 或手動關閉
 
   if (cloudOk) {
     toast(`✅ 已儲存並同步 ${cleaned.length} 個標籤`, 'success');
@@ -4475,29 +4551,218 @@ async function loadCatOrder() {
 }
 
 // ============================================================
-// 🗂 分類管理（v2.9.10）
+// ⚙️ 管理中心（v2.9.11 三合一：標籤 + 分類 + 商品顏色）
 // ============================================================
-// 狀態：暫存 modal 內編輯中的分類
-// 結構：{ oldName, newName, count, deleted, moveTo }
-let _cmEditing = [];
 
-function openCatManager() {
-  // 收集目前所有分類 + 每個分類的商品數
+// 打開管理中心，可指定初始 tab（'tags' / 'cats' / 'colors'）
+function openManagementCenter(tab) {
+  const startTab = tab || 'tags';
+  // 準備各 tab 的資料
+  // 1. 標籤：載入現有 PM_TAGS 到編輯暫存
+  _tcEditing = PM_TAGS.map(t => ({ name: t.name, color: t.color }));
+  if (_tcEditing.length === 0) {
+    _tcEditing = PM_DEFAULT_TAGS.map(t => ({ name: t.name, color: t.color }));
+  }
+  // 2. 分類：載入所有現有分類
   const cats = getAllCats();
   const counts = {};
   cats.forEach(c => { counts[c] = 0; });
   products.forEach(p => { if (p.cat && counts.hasOwnProperty(p.cat)) counts[p.cat]++; });
   _cmEditing = cats.map(c => ({
-    oldName: c,
-    newName: c,
-    count: counts[c] || 0,
-    deleted: false,
-    moveTo: '',
-    isNew: false,
+    oldName: c, newName: c, count: counts[c] || 0, deleted: false, moveTo: '', isNew: false,
   }));
+  // 3. 商品顏色：從所有商品彙總 + 讀本地色卡
+  _cpaEditing = buildColorPaletteFromProducts();
+
+  // 全部渲染
+  renderTagColorList();
   renderCmList();
-  openModal('cat-manager-modal');
+  renderColorPaletteList();
+  openModal('mgmt-center-modal');
+  mgmtSwitchTab(startTab);
 }
+
+// 切換 tab
+function mgmtSwitchTab(tab) {
+  const tabs = ['tags', 'cats', 'colors'];
+  tabs.forEach(t => {
+    const pane = document.getElementById('mgmt-pane-' + t);
+    if (pane) pane.style.display = (t === tab) ? '' : 'none';
+    const btn = document.querySelector(`[data-mgmt-tab="${t}"]`);
+    if (btn) {
+      const active = (t === tab);
+      btn.style.color = active ? 'var(--primary)' : 'var(--text-soft)';
+      btn.style.borderBottomColor = active ? 'var(--gold)' : 'transparent';
+      btn.style.background = active ? 'var(--surface)' : 'transparent';
+    }
+  });
+}
+
+// 舊入口 → 導到管理中心對應 tab（保留向後相容）
+function openTagColorModal() { openManagementCenter('tags'); }
+function openCatManager() { openManagementCenter('cats'); }
+
+// ============================================================
+// 🎨 全域商品顏色色卡（v2.9.11）
+// localStorage key: pos_color_palette = { 顏色名: '#hex', ... }
+// ============================================================
+
+// 從所有商品彙總目前所有顏色 + 每個顏色最常用的 hex（多數決）
+// 再跟已儲存的 palette 合併（palette 值優先）
+function buildColorPaletteFromProducts() {
+  const palette = load('pos_color_palette', {});
+  // 統計每個色名在所有商品中的 hex 出現次數 + 使用該色名的商品數
+  const stats = {}; // { name: { hexes: {hex:count}, productCount: n } }
+  products.forEach(p => {
+    if (!Array.isArray(p.colors)) return;
+    p.colors.forEach(name => {
+      if (!name) return;
+      if (!stats[name]) stats[name] = { hexes: {}, productCount: 0 };
+      stats[name].productCount++;
+      const hex = p.colorSwatches && p.colorSwatches[name];
+      if (hex) stats[name].hexes[hex] = (stats[name].hexes[hex] || 0) + 1;
+    });
+  });
+  // 產出編輯用的陣列
+  const rows = Object.keys(stats).map(name => {
+    // 決定該色名的代表 hex：palette 已存的優先 > 多數決 > 預設木色
+    let hex = palette[name];
+    if (!hex) {
+      const hexes = stats[name].hexes;
+      const sortedByCount = Object.entries(hexes).sort((a, b) => b[1] - a[1]);
+      hex = sortedByCount.length > 0 ? sortedByCount[0][0] : '#8B6F47';
+    }
+    return {
+      name,
+      hex: hex.toUpperCase(),
+      productCount: stats[name].productCount,
+      originalName: name, // 用來偵測改名（尚未實作，先預留欄位）
+    };
+  });
+  // 依商品數多到少排序
+  rows.sort((a, b) => b.productCount - a.productCount);
+  // 也把 palette 裡有、但商品都沒用到的加進來（可能是舊資料）
+  Object.keys(palette).forEach(name => {
+    if (!rows.find(r => r.name === name)) {
+      rows.push({ name, hex: palette[name].toUpperCase(), productCount: 0, originalName: name });
+    }
+  });
+  return rows;
+}
+
+let _cpaEditing = [];
+
+function renderColorPaletteList() {
+  const el = document.getElementById('color-palette-list');
+  if (!el) return;
+  if (_cpaEditing.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;background:#faf7f2;border-radius:8px;">尚無顏色資料<br><span style="font-size:11px;">建立第一個商品並加入顏色後，這裡就會出現</span></div>';
+    return;
+  }
+  el.innerHTML = _cpaEditing.map((c, i) => `
+    <div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+      <input type="color" value="${c.hex}" onchange="cpaUpdate(${i}, this.value)" title="調整色碼" style="width:40px;height:34px;border:1px solid var(--border);padding:2px;cursor:pointer;border-radius:6px;background:#fff;flex-shrink:0;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;color:var(--primary);">${escapeHtml(c.name)}</div>
+        <div style="font-size:10px;color:var(--text-muted);font-family:monospace;">${c.hex}</div>
+      </div>
+      <span style="padding:3px 8px;background:var(--surface2);border-radius:9px;font-size:11px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;">
+        ${c.productCount > 0 ? c.productCount + ' 商品' : '未使用'}
+      </span>
+    </div>
+  `).join('');
+}
+
+function cpaUpdate(idx, hex) {
+  if (_cpaEditing[idx]) {
+    _cpaEditing[idx].hex = hex.toUpperCase();
+    renderColorPaletteList();
+  }
+}
+
+async function cpaSave() {
+  const btn = document.getElementById('cpa-save-btn');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 儲存中…'; }
+
+  // 存到 localStorage（palette map）
+  const palette = {};
+  _cpaEditing.forEach(c => {
+    const name = (c.name || '').trim();
+    if (name && /^#[0-9A-Fa-f]{6}$/.test(c.hex)) {
+      palette[name] = c.hex.toUpperCase();
+    }
+  });
+  save('pos_color_palette', palette);
+
+  if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  toast(`✅ 色卡已儲存（${Object.keys(palette).length} 個顏色）`);
+}
+
+// 一鍵：把每個顏色的色卡強制套到所有使用該色名的商品上
+async function cpaApplyToAll() {
+  const palette = {};
+  _cpaEditing.forEach(c => {
+    const name = (c.name || '').trim();
+    if (name && /^#[0-9A-Fa-f]{6}$/.test(c.hex)) palette[name] = c.hex.toUpperCase();
+  });
+  const totalColors = Object.keys(palette).length;
+  if (totalColors === 0) { toast('沒有可套用的色卡', 'warn'); return; }
+
+  // 計算會影響幾個商品
+  let affectedProducts = 0;
+  products.forEach(p => {
+    if (Array.isArray(p.colors) && p.colors.some(c => palette[c])) affectedProducts++;
+  });
+
+  if (!confirm(`要把色卡強制套到 ${affectedProducts} 個商品嗎？\n\n將覆蓋每個商品原本設定的顏色色碼。\n此動作無法復原。`)) return;
+
+  const btn = document.getElementById('cpa-save-btn');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 套用中…'; }
+
+  let changed = 0;
+  products.forEach(p => {
+    if (!Array.isArray(p.colors)) return;
+    if (!p.colorSwatches) p.colorSwatches = {};
+    let touched = false;
+    p.colors.forEach(name => {
+      if (palette[name] && p.colorSwatches[name] !== palette[name]) {
+        p.colorSwatches[name] = palette[name];
+        touched = true;
+      }
+    });
+    if (touched) changed++;
+  });
+
+  // 同時存 palette
+  save('pos_color_palette', palette);
+  save('pos_products', products);
+
+  // 重繪各處
+  if (typeof renderProductsTable === 'function') renderProductsTable();
+  if (typeof renderProducts === 'function') renderProducts();
+
+  if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  toast(`✅ 已套用到 ${changed} 個商品的顏色`);
+
+  // 觸發雲端同步（商品資料變了）
+  if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
+  else if (typeof syncUpload === 'function') syncUpload();
+}
+
+// 取得 palette 中某個色名的預設 hex（給編輯商品時 auto-fill 用）
+function getPaletteHex(name) {
+  const palette = load('pos_color_palette', {});
+  return palette[name] || '';
+}
+
+// ============================================================
+// 🗂 分類管理（v2.9.10）
+// ============================================================
+// 狀態：暫存 modal 內編輯中的分類
+// 結構：{ oldName, newName, count, deleted, moveTo }
+let _cmEditing = [];
 
 function renderCmList() {
   const el = document.getElementById('cm-list');
@@ -4698,7 +4963,14 @@ async function cmSave() {
   if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
 
   if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
-  closeModal('cat-manager-modal');
+  // 不關 modal — 讓用戶可以繼續操作或手動關閉
+  // 重新讀取當前分類狀態（改名/刪除已套用），刷新 modal 顯示
+  const catsAfter = getAllCats();
+  const countsAfter = {};
+  catsAfter.forEach(c => { countsAfter[c] = 0; });
+  products.forEach(p => { if (p.cat && countsAfter.hasOwnProperty(p.cat)) countsAfter[p.cat]++; });
+  _cmEditing = catsAfter.map(c => ({ oldName: c, newName: c, count: countsAfter[c] || 0, deleted: false, moveTo: '', isNew: false }));
+  renderCmList();
   toast(`✅ 已更新 ${changed} 個商品的分類`);
 
   // 觸發雲端同步（商品資料）+ 分類順序（獨立 endpoint）
@@ -4847,9 +5119,15 @@ function cpConfirm() {
   if (!pmColors.includes(name)) pmColors.push(name);
   // 存色碼
   pmColorSwatches[name] = _cpCurrentHex;
+  // ★ v2.9.11 同時寫入全域色卡（下次別的商品用同名顏色會自動填入）
+  try {
+    const palette = load('pos_color_palette', {});
+    palette[name] = _cpCurrentHex;
+    save('pos_color_palette', palette);
+  } catch (e) {}
   renderPmVariantChips();
   closeModal('color-picker-modal');
-  toast(`✅ 已加入「${name}」（${_cpCurrentHex}）`);
+  toast(`✅ 已加入「${name}」（${_cpCurrentHex}），已存入全域色卡`);
 }
 
 // 計算 featuredOrder：已有值就沿用、新啟用就排到最後、關掉就不設值
@@ -5131,6 +5409,11 @@ function addNewVariant(type) {
   if (!val) return;
   const arr = type === 'color' ? pmColors : pmSizes;
   if (!arr.includes(val)) arr.push(val);
+  // ★ v2.9.11 顏色：自動從全域色卡填入 hex（若 palette 有這個色名且商品還沒設）
+  if (type === 'color' && typeof getPaletteHex === 'function' && !pmColorSwatches[val]) {
+    const hex = getPaletteHex(val);
+    if (hex) pmColorSwatches[val] = hex;
+  }
   inp.value = '';
   renderPmVariantChips();
 }
