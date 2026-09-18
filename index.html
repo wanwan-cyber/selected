@@ -1159,6 +1159,7 @@
             <button class="btn btn-outline" onclick="bulkOnlineShop(true)" title="將所有商品標記為官網上架" style="border-color:var(--gold);color:var(--gold);">🛒 全部上架</button>
             <button class="btn btn-outline" onclick="bulkOnlineShop(false)" title="將所有商品從官網下架">☐ 全部下架</button>
             <button class="btn btn-outline" onclick="openTagColorModal()" title="管理商品標籤名稱與顏色（同步到官網）">🏷 標籤顏色</button>
+            <button class="btn btn-outline" onclick="openCatManager()" title="重新命名或刪除分類（會更新所有該分類的商品）">🗂 分類管理</button>
             <button class="btn btn-primary" onclick="openProductModal()">＋ 新增商品</button>
           </div>
         </div>
@@ -2239,6 +2240,29 @@
 </div>
 
 <!-- Receipt Modal -->
+<!-- 🗂 分類管理 modal（v2.9.10） -->
+<div class="modal-overlay" id="cat-manager-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h3>🗂 分類管理</h3>
+      <button class="modal-close" onclick="closeModal('cat-manager-modal')">×</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid var(--gold);padding:8px 12px;border-radius:4px;">
+        💡 <strong>改分類名稱</strong>：直接編輯框內名稱，儲存後所有商品跟著改。<br>
+        💡 <strong>刪除分類</strong>：點 🗑️，會問你分類裡的商品要移到哪。<br>
+        💡 <strong>合併分類</strong>：把 A 改成跟 B 一樣名稱，儲存後兩個會合併。
+      </div>
+      <div id="cm-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="cmAddNew()" style="margin-top:10px;width:100%;">＋ 新增空分類</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('cat-manager-modal')">取消</button>
+      <button class="btn btn-primary" onclick="cmSave()" id="cm-save-btn">💾 儲存變更</button>
+    </div>
+  </div>
+</div>
+
 <!-- 🎨 從照片取色 modal（v2.9.9） -->
 <div class="modal-overlay" id="color-picker-modal">
   <div class="modal" style="max-width:640px;">
@@ -3337,17 +3361,33 @@ function showReceipt(tx, total) {
 function printReceipt() { window.print(); }
 
 // ======================== PRODUCTS MANAGEMENT ========================
+// ★ v2.9.10 售完・下架商品摺疊區塊的展開狀態（每次載入預設收起）
+let pmShowSoldOut = false;
+function pmToggleSoldOut() {
+  pmShowSoldOut = !pmShowSoldOut;
+  renderProductsTable();
+}
+// ★ v2.9.10 判斷商品是否為「售完 or 手動下架」（兩種都歸到摺疊區）
+function isPmInactive(p) {
+  const noStock = !p.preorder && getProductStock(p) <= 0;
+  const notListed = !p.onlineShop;
+  return noStock || notListed;
+}
+
 function renderProductsTable() {
   const tbody = document.getElementById('products-tbody');
   // 🔍 套用篩選條件
   const list = getFilteredProductsForPM();
   updatePmFilterCount(list.length, products.length);
-  tbody.innerHTML = list.map(p => {
+  // ★ v2.9.10 拆成兩區：正常區 + 售完・下架區
+  const activeList = list.filter(p => !isPmInactive(p));
+  const inactiveList = list.filter(p => isPmInactive(p));
+  const renderRow = (p, dimmed) => {
     const stock = getProductStock(p);
     const mainImg = (p.images && p.images.length) ? p.images[0] : (p.image || '');
     const imgCount = (p.images && p.images.length) || (p.image ? 1 : 0);
     return `
-    <tr>
+    <tr${dimmed ? ' style="opacity:.6;background:#fafafa;"' : ''}>
       <td style="padding:6px;">
         ${mainImg ? `<div style="position:relative;width:42px;height:42px;border-radius:6px;background:url('${mainImg.replace(/'/g, "\\'")}') center/cover;border:1px solid var(--border);cursor:pointer;" onclick="showImagePreview('${mainImg.replace(/'/g, "\\'")}', '${(p.name||'').replace(/'/g, "\\'")}')">${imgCount > 1 ? `<div style="position:absolute;bottom:-2px;right:-2px;background:var(--gold);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;border:1px solid #fff;">${imgCount}</div>` : ''}</div>` : `<div style="width:42px;height:42px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--border);font-size:18px;">🖼</div>`}
       </td>
@@ -3389,7 +3429,21 @@ function renderProductsTable() {
         <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">刪除</button>
       </td>
     </tr>
-  `;}).join('') || '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted);">尚無商品</td></tr>';
+  `;
+  };
+  const activeHtml = activeList.map(p => renderRow(p, false)).join('');
+  const inactiveHtml = pmShowSoldOut ? inactiveList.map(p => renderRow(p, true)).join('') : '';
+  const dividerRow = inactiveList.length > 0 ? `
+    <tr onclick="pmToggleSoldOut()" style="cursor:pointer;">
+      <td colspan="11" style="padding:14px 16px;text-align:center;background:linear-gradient(180deg,#faf7f2 0%,#f2ede3 100%);border-top:2px dashed var(--border);border-bottom:${pmShowSoldOut ? '2px dashed var(--border)' : 'none'};font-weight:700;color:var(--text-soft);letter-spacing:.5px;font-size:13px;">
+        ${pmShowSoldOut ? '⬆️ 收起' : '⬇️ 展開'} 售完・下架商品 (${inactiveList.length})
+        ${pmShowSoldOut ? '' : '<span style="color:var(--text-muted);font-weight:500;margin-left:6px;">— 點此展開</span>'}
+      </td>
+    </tr>
+  ` : '';
+  tbody.innerHTML = (activeList.length + inactiveList.length === 0)
+    ? '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted);">尚無商品</td></tr>'
+    : activeHtml + dividerRow + inactiveHtml;
   // 順便更新篩選 UI（分類件數、廠商選項、強推按鈕總數）
   if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
   if (typeof refreshPmFilterVendorOptions === 'function') refreshPmFilterVendorOptions();
@@ -3397,6 +3451,7 @@ function renderProductsTable() {
   if (typeof updatePmTypeCounts === 'function') updatePmTypeCounts();
   if (typeof renderPmBulkBar === 'function') renderPmBulkBar();
 }
+
 
 // ============================================================
 // 🔍 商品管理頁的篩選 / 排序邏輯
@@ -4383,6 +4438,191 @@ async function loadTagColors() {
       }
     }
   } catch (e) { /* 靜默失敗、用 localStorage 或預設 */ }
+}
+
+// ============================================================
+// 🗂 分類管理（v2.9.10）
+// ============================================================
+// 狀態：暫存 modal 內編輯中的分類
+// 結構：{ oldName, newName, count, deleted, moveTo }
+let _cmEditing = [];
+
+function openCatManager() {
+  // 收集目前所有分類 + 每個分類的商品數
+  const cats = getAllCats();
+  const counts = {};
+  cats.forEach(c => { counts[c] = 0; });
+  products.forEach(p => { if (p.cat && counts.hasOwnProperty(p.cat)) counts[p.cat]++; });
+  _cmEditing = cats.map(c => ({
+    oldName: c,
+    newName: c,
+    count: counts[c] || 0,
+    deleted: false,
+    moveTo: '',
+    isNew: false,
+  }));
+  renderCmList();
+  openModal('cat-manager-modal');
+}
+
+function renderCmList() {
+  const el = document.getElementById('cm-list');
+  if (!el) return;
+  if (_cmEditing.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;background:#faf7f2;border-radius:8px;">尚無分類，點下方「＋ 新增空分類」開始</div>';
+    return;
+  }
+  el.innerHTML = _cmEditing.map((c, i) => {
+    if (c.deleted) {
+      const target = c.moveTo || '（清空分類）';
+      return `
+        <div style="display:flex;gap:8px;align-items:center;padding:10px;background:#fde8e8;border:1px solid #f5c2c2;border-radius:8px;">
+          <span style="flex:1;font-size:13px;color:#c0392b;">
+            <s style="opacity:.7;">${escapeHtml(c.oldName)}</s>
+            <span style="margin-left:6px;font-weight:600;">→ ${c.count > 0 ? '移至：' + escapeHtml(target) : '刪除'}</span>
+          </span>
+          <button type="button" onclick="cmUndoDelete(${i})" style="background:transparent;border:1px solid var(--text-muted);color:var(--text-muted);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;">↩️ 復原</button>
+        </div>
+      `;
+    }
+    const countBadge = c.count > 0
+      ? `<span style="padding:3px 8px;background:var(--surface2);border-radius:9px;font-size:11px;color:var(--text-muted);white-space:nowrap;">${c.count} 商品</span>`
+      : `<span style="padding:3px 8px;background:#f5ede0;border-radius:9px;font-size:11px;color:var(--text-muted);white-space:nowrap;">空</span>`;
+    return `
+      <div style="display:flex;gap:8px;align-items:center;padding:10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+        <input type="text" value="${escapeHtml(c.newName)}" oninput="cmUpdateName(${i}, this.value)" maxlength="12" placeholder="分類名稱" style="flex:1;min-width:80px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        ${countBadge}
+        <button type="button" onclick="cmDelete(${i})" title="刪除此分類" style="background:transparent;border:1px solid var(--danger);color:var(--danger);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;">🗑️</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function cmUpdateName(idx, val) {
+  if (_cmEditing[idx]) _cmEditing[idx].newName = val;
+}
+
+function cmDelete(idx) {
+  const row = _cmEditing[idx];
+  if (!row) return;
+  if (row.count === 0) {
+    // 空分類直接刪
+    row.deleted = true;
+    row.moveTo = '';
+    renderCmList();
+    return;
+  }
+  // 有商品：問要移到哪
+  const otherCats = _cmEditing
+    .filter((c, i) => i !== idx && !c.deleted && c.newName.trim())
+    .map(c => c.newName.trim());
+  const options = ['（清空分類）', ...otherCats];
+  const promptText = `分類「${row.oldName}」有 ${row.count} 個商品\n\n要移到哪個分類？\n\n請輸入編號：\n${options.map((o, i) => `${i}. ${o}`).join('\n')}`;
+  const ans = prompt(promptText, '0');
+  if (ans === null) return; // 取消
+  const chosen = parseInt(ans, 10);
+  if (isNaN(chosen) || chosen < 0 || chosen >= options.length) {
+    toast('未選擇有效的分類', 'warn');
+    return;
+  }
+  row.deleted = true;
+  row.moveTo = chosen === 0 ? '' : options[chosen];
+  renderCmList();
+}
+
+function cmUndoDelete(idx) {
+  if (_cmEditing[idx]) {
+    _cmEditing[idx].deleted = false;
+    _cmEditing[idx].moveTo = '';
+    renderCmList();
+  }
+}
+
+function cmAddNew() {
+  const val = prompt('請輸入新分類名稱：', '');
+  if (val === null) return;
+  const trimmed = val.trim();
+  if (!trimmed) return;
+  if (trimmed.length > 12) { toast('分類名稱最多 12 字', 'warn'); return; }
+  // 檢查重複
+  if (_cmEditing.some(c => !c.deleted && c.newName.trim() === trimmed)) {
+    toast(`分類「${trimmed}」已存在`, 'warn');
+    return;
+  }
+  _cmEditing.push({
+    oldName: trimmed, // 新分類沒有舊名，用同名占位
+    newName: trimmed,
+    count: 0,
+    deleted: false,
+    moveTo: '',
+    isNew: true,
+  });
+  renderCmList();
+}
+
+async function cmSave() {
+  // 驗證：newName 都不能空、不能重複（deleted 除外）
+  const active = _cmEditing.filter(c => !c.deleted);
+  const seen = new Map();
+  for (const c of active) {
+    const name = (c.newName || '').trim();
+    if (!name) { toast('分類名稱不能空白，請填寫或刪除該列', 'warn'); return; }
+    if (name.length > 12) { toast(`「${name}」超過 12 字上限`, 'warn'); return; }
+    seen.set(name, (seen.get(name) || 0) + 1);
+  }
+  // 允許同名（合併），但要確認
+  const merges = [...seen.entries()].filter(([, n]) => n > 1);
+  if (merges.length > 0) {
+    const mergeInfo = merges.map(([name, n]) => `「${name}」有 ${n} 列會合併`).join('\n');
+    if (!confirm(`偵測到分類合併：\n${mergeInfo}\n\n合併後這些分類的所有商品都會歸到同一個分類，確定嗎？`)) return;
+  }
+
+  const btn = document.getElementById('cm-save-btn');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 儲存中…'; }
+
+  // 應用變更（一次算出每個 oldName 該對應的最終名稱）
+  const renameMap = {};   // oldName → newName
+  const deleteMap = {};   // oldName → moveTo（'' = 清空）
+  _cmEditing.forEach(c => {
+    if (c.isNew) return; // 新分類不用管，等有商品被指到它才存在
+    if (c.deleted) {
+      deleteMap[c.oldName] = c.moveTo || '';
+    } else {
+      const finalName = (c.newName || '').trim();
+      if (finalName && finalName !== c.oldName) {
+        renameMap[c.oldName] = finalName;
+      }
+    }
+  });
+
+  // 掃過所有商品，套用 rename + delete
+  let changed = 0;
+  products.forEach(p => {
+    if (!p.cat) return;
+    if (p.cat in deleteMap) {
+      p.cat = deleteMap[p.cat] || '';
+      changed++;
+    } else if (p.cat in renameMap) {
+      p.cat = renameMap[p.cat];
+      changed++;
+    }
+  });
+
+  save('pos_products', products);
+  // 重繪各處
+  if (typeof renderProductsTable === 'function') renderProductsTable();
+  if (typeof renderProducts === 'function') renderProducts();
+  if (typeof renderCatBar === 'function') renderCatBar();
+  if (typeof renderPmFilterCatChips === 'function') renderPmFilterCatChips();
+
+  if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  closeModal('cat-manager-modal');
+  toast(`✅ 已更新 ${changed} 個商品的分類`);
+
+  // 觸發雲端同步（跟一般的商品編輯行為一致）
+  if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
+  else if (typeof syncUpload === 'function') syncUpload();
 }
 
 // ============================================================
