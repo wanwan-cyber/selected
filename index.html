@@ -3815,7 +3815,19 @@ let pmVendor = '';
 let pmStockMap = {}; // key = "color|size"
 
 // 蒐集所有現有的候選項
-function getAllCats() { return [...new Set(products.map(p => p.cat).filter(Boolean))].sort(); }
+// ★ v2.9.10 分類順序（POS + 官網共用；localStorage 存本地備份，透過 Apps Script 同步）
+let PM_CAT_ORDER = load('pos_cat_order', []);
+function getAllCats() {
+  const derived = [...new Set(products.map(p => p.cat).filter(Boolean))];
+  const ordered = [];
+  // 1) 先按 PM_CAT_ORDER 的順序放（只放存在的分類）
+  PM_CAT_ORDER.forEach(name => {
+    if (derived.includes(name) && !ordered.includes(name)) ordered.push(name);
+  });
+  // 2) 再放沒排到的（新分類、順序未設）— 按字母排在最後
+  derived.filter(c => !ordered.includes(c)).sort().forEach(c => ordered.push(c));
+  return ordered;
+}
 function getAllVendors() { return [...new Set(products.map(p => p.vendor).filter(Boolean))].sort(); }
 
 // ======================== 廠商代號 ========================
@@ -4440,6 +4452,22 @@ async function loadTagColors() {
   } catch (e) { /* 靜默失敗、用 localStorage 或預設 */ }
 }
 
+// ★ v2.9.10 從雲端讀取最新的分類順序
+async function loadCatOrder() {
+  if (!appSettings.syncUrl) return;
+  try {
+    const res = await fetchWithTimeout(appSettings.syncUrl + '?action=getCatOrder&_t=' + Date.now(), {}, 15000);
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.cats) && data.cats.length > 0) {
+      PM_CAT_ORDER = data.cats.map(c => c.name).filter(Boolean);
+      save('pos_cat_order', PM_CAT_ORDER);
+      // 分類列有變 → 重繪一下 UI
+      if (typeof renderCatBar === 'function') { try { renderCatBar(); } catch(e) {} }
+      if (typeof renderPmFilterCatChips === 'function') { try { renderPmFilterCatChips(); } catch(e) {} }
+    }
+  } catch (e) { /* 靜默失敗、用 localStorage 或預設順序 */ }
+}
+
 // ============================================================
 // 🗂 分類管理（v2.9.10）
 // ============================================================
@@ -4472,6 +4500,8 @@ function renderCmList() {
     el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;background:#faf7f2;border-radius:8px;">尚無分類，點下方「＋ 新增空分類」開始</div>';
     return;
   }
+  // 目前有幾筆非刪除的（用來判斷 ↑↓ 是否 disable）
+  const activeIdxs = _cmEditing.map((c, i) => c.deleted ? -1 : i).filter(i => i >= 0);
   el.innerHTML = _cmEditing.map((c, i) => {
     if (c.deleted) {
       const target = c.moveTo || '（清空分類）';
@@ -4488,14 +4518,45 @@ function renderCmList() {
     const countBadge = c.count > 0
       ? `<span style="padding:3px 8px;background:var(--surface2);border-radius:9px;font-size:11px;color:var(--text-muted);white-space:nowrap;">${c.count} 商品</span>`
       : `<span style="padding:3px 8px;background:#f5ede0;border-radius:9px;font-size:11px;color:var(--text-muted);white-space:nowrap;">空</span>`;
+    // ↑↓ 排序按鈕（第一筆不能上移，最後一筆不能下移）
+    const posInActive = activeIdxs.indexOf(i);
+    const isFirst = posInActive === 0;
+    const isLast = posInActive === activeIdxs.length - 1;
+    const arrowStyle = 'background:transparent;border:1px solid var(--border);color:var(--text-soft);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;';
+    const disabledStyle = 'opacity:.25;cursor:not-allowed;';
     return `
-      <div style="display:flex;gap:8px;align-items:center;padding:10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
-        <input type="text" value="${escapeHtml(c.newName)}" oninput="cmUpdateName(${i}, this.value)" maxlength="12" placeholder="分類名稱" style="flex:1;min-width:80px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+      <div style="display:flex;gap:6px;align-items:center;padding:10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+        <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
+          <button type="button" onclick="cmMoveUp(${i})" ${isFirst ? 'disabled' : ''} title="上移" style="${arrowStyle}${isFirst ? disabledStyle : ''}padding:2px 6px;line-height:1;">▲</button>
+          <button type="button" onclick="cmMoveDown(${i})" ${isLast ? 'disabled' : ''} title="下移" style="${arrowStyle}${isLast ? disabledStyle : ''}padding:2px 6px;line-height:1;">▼</button>
+        </div>
+        <input type="text" value="${escapeHtml(c.newName)}" oninput="cmUpdateName(${i}, this.value)" maxlength="12" placeholder="分類名稱" style="flex:1;min-width:70px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
         ${countBadge}
         <button type="button" onclick="cmDelete(${i})" title="刪除此分類" style="background:transparent;border:1px solid var(--danger);color:var(--danger);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;flex-shrink:0;">🗑️</button>
       </div>
     `;
   }).join('');
+}
+
+// ↑↓ 排序：只在「非刪除」的列之間交換
+function cmMoveUp(idx) {
+  // 找前一個非刪除的 idx
+  for (let j = idx - 1; j >= 0; j--) {
+    if (!_cmEditing[j].deleted) {
+      [_cmEditing[j], _cmEditing[idx]] = [_cmEditing[idx], _cmEditing[j]];
+      renderCmList();
+      return;
+    }
+  }
+}
+function cmMoveDown(idx) {
+  for (let j = idx + 1; j < _cmEditing.length; j++) {
+    if (!_cmEditing[j].deleted) {
+      [_cmEditing[j], _cmEditing[idx]] = [_cmEditing[idx], _cmEditing[j]];
+      renderCmList();
+      return;
+    }
+  }
 }
 
 function cmUpdateName(idx, val) {
@@ -4610,6 +4671,20 @@ async function cmSave() {
   });
 
   save('pos_products', products);
+  // ★ v2.9.10 也存分類順序（依 _cmEditing 現在的排列順序 + 排除刪除的 + 套用改名結果）
+  const finalOrder = _cmEditing
+    .filter(c => !c.deleted)
+    .map(c => (c.newName || '').trim())
+    .filter(Boolean);
+  // 去重（合併後可能有重複名稱）
+  const seenNames = new Set();
+  PM_CAT_ORDER = finalOrder.filter(n => {
+    if (seenNames.has(n)) return false;
+    seenNames.add(n);
+    return true;
+  });
+  save('pos_cat_order', PM_CAT_ORDER);
+
   // 重繪各處
   if (typeof renderProductsTable === 'function') renderProductsTable();
   if (typeof renderProducts === 'function') renderProducts();
@@ -4620,9 +4695,23 @@ async function cmSave() {
   closeModal('cat-manager-modal');
   toast(`✅ 已更新 ${changed} 個商品的分類`);
 
-  // 觸發雲端同步（跟一般的商品編輯行為一致）
+  // 觸發雲端同步（商品資料）+ 分類順序（獨立 endpoint）
   if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
   else if (typeof syncUpload === 'function') syncUpload();
+  // 分類順序另外同步
+  if (appSettings.syncUrl && PM_CAT_ORDER.length > 0) {
+    try {
+      const payload = {
+        action: 'saveCatOrder',
+        cats: PM_CAT_ORDER.map((name, i) => ({ name, order: i })),
+      };
+      fetchWithTimeout(appSettings.syncUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      }, 15000).catch(() => {}); // 靜默失敗、本地已存
+    } catch (e) {}
+  }
 }
 
 // ============================================================
@@ -5860,6 +5949,8 @@ async function syncDownload(showToast = false) {
     loadViewCounts();
     // 🏷️ 順便拉一下標籤顏色（不阻塞主流程）
     loadTagColors();
+    // 🗂 順便拉一下分類順序（不阻塞主流程）
+    loadCatOrder();
     if (changed) {
       // 重新渲染各畫面
       renderCatBar(); renderProducts(); renderProductsTable();
