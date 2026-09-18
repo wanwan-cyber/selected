@@ -2565,8 +2565,14 @@ window.addEventListener('load', () => {
 
 
 function getCategories() {
-  const cats = [...new Set(products.map(p => p.cat).filter(Boolean))];
-  return ['全部', ...cats];
+  // ★ v2.9.10 沿用「分類管理」設定的順序（PM_CAT_ORDER）— 沒排到的按字母排在最後
+  const derived = [...new Set(products.map(p => p.cat).filter(Boolean))];
+  const ordered = [];
+  (typeof PM_CAT_ORDER !== 'undefined' ? PM_CAT_ORDER : []).forEach(name => {
+    if (derived.includes(name) && !ordered.includes(name)) ordered.push(name);
+  });
+  derived.filter(c => !ordered.includes(c)).sort().forEach(c => ordered.push(c));
+  return ['全部', ...ordered];
 }
 let activeCat = '全部';
 function renderCatBar() {
