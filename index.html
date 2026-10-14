@@ -1619,13 +1619,13 @@
           💡 每張示範照可以標身型（X/O/T/H/A）+ 填備註（身高/體重/穿的尺碼）。客人可以看到不同身型的實穿效果。
         </div>
       </div>
-      <!-- 📏 商品實測尺寸（v2.9.13） -->
+      <!-- 📏 商品實測尺寸（v2.9.16 每尺碼獨立） -->
       <div class="variant-section">
-        <h4>📏 商品實測尺寸 <span style="font-weight:400;color:var(--text-muted);font-size:11px;">（客人可在官網輸入自己尺寸比對合身度）</span></h4>
-        <div id="pm-measurements-grid" style="display:flex;flex-direction:column;gap:8px;"></div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.6;">
-          💡 <strong>「數值」</strong>是實際量到的尺寸（單位 cm）；<strong>「彈性可到」</strong>選填，有彈性布料才填。<br>
-          🎯 客人在官網輸入自己尺寸 → 客人尺寸 ≤ 商品彈性上限（或數值）→ 顯示 ✓ 適合。
+        <h4>📏 商品實測尺寸 <span style="font-weight:400;color:var(--text-muted);font-size:11px;">（每個尺碼都填一組；客人可在官網比對合身度）</span></h4>
+        <div id="pm-measurements-grid"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6;background:#faf7f2;border-radius:6px;padding:8px 10px;">
+          💡 單位 cm，用不到的欄位留空。<br>
+          🎯 客人在官網輸入自己尺寸 → 系統找最適合的尺碼推薦，並對比所有尺碼。
         </div>
       </div>
       <!-- 材質（英文網格，只填 %；會自動組成標籤字串顯示在官網詳情頁）-->
@@ -2507,16 +2507,32 @@ let pmSizes = [];
 // ★ v2.9.9 每個顏色對應的 hex 色碼（例：{ 杏: '#E5C9A8' }）
 // 用 Object 結構的原因：可跟 pmColors 分離、向後相容舊資料（沒此欄位就退回純文字）
 let pmColorSwatches = {};
-// ★ v2.9.13 商品實測尺寸（單位 cm，客人輸入自己尺寸會比對）
-// 結構：{ shoulder: {v: 38, max: 42}, bust: {v: 90}, ... }
-// max 選填，代表彈性可到的最大值。沒填 max 就當作固定尺寸（客人尺寸 ≤ v 才適合）
-let pmMeasurements = {};
+// ★ v2.9.17 商品實測尺寸（新增 type：依類型顯示對應欄位）
+// 結構：{ type: 'top'|'pants'|'skirt'|'dress'|'custom'|'', elastic: 2, bySize: {...} }
+let pmMeasurements = { type: '', elastic: 0, bySize: {} };
 const MEASURE_FIELDS = [
-  { key: 'shoulder', label: '肩寬', icon: '👕' },
-  { key: 'bust',     label: '胸圍', icon: '💠' },
-  { key: 'waist',    label: '腰圍', icon: '⌛' },
-  { key: 'hip',      label: '臀圍', icon: '🍑' },
+  { key: 'shoulder',    label: '肩寬', icon: '👕', groups: ['top', 'dress', 'custom'] },
+  { key: 'bust',        label: '胸圍', icon: '💠', groups: ['top', 'dress', 'custom'] },
+  { key: 'waist',       label: '腰圍', icon: '⌛', groups: ['pants', 'skirt', 'dress', 'custom'] },
+  { key: 'hip',         label: '臀圍', icon: '🍑', groups: ['pants', 'skirt', 'dress', 'custom'] },
+  { key: 'topLength',   label: '衣長', icon: '📐', groups: ['top', 'custom'] },
+  { key: 'sleeveLength',label: '袖長', icon: '🫳', groups: ['top', 'dress', 'custom'] },
+  { key: 'pantsLength', label: '褲長', icon: '📏', groups: ['pants', 'custom'] },
+  { key: 'skirtLength', label: '裙長', icon: '📏', groups: ['skirt', 'custom'] },
+  { key: 'dressLength', label: '總長', icon: '📐', groups: ['dress', 'custom'] },
 ];
+const MEASURE_PRESETS = [
+  { code: '',       label: '— 不顯示 —' },
+  { code: 'top',    label: '👕 上衣（肩寬/胸圍/袖長/衣長）' },
+  { code: 'pants',  label: '👖 褲子（腰圍/臀圍/褲長）' },
+  { code: 'skirt',  label: '👗 裙子（腰圍/臀圍/裙長）' },
+  { code: 'dress',  label: '👚 洋裝/連身（全部欄位）' },
+  { code: 'custom', label: '🛠 自訂（手動選擇欄位）' },
+];
+function getMeasureFieldsFor(type) {
+  if (!type) return [];
+  return MEASURE_FIELDS.filter(f => f.groups.includes(type));
+}
 let vmSelectedColor = '';
 let vmSelectedSize = '';
 
@@ -4308,8 +4324,8 @@ function openProductModal(id) {
   pmSizes = p ? [...(p.sizes||[])] : [];
   // ★ v2.9.9 載入色碼 map（舊商品沒有此欄位就是空 obj）
   pmColorSwatches = p?.colorSwatches ? {...p.colorSwatches} : {};
-  // ★ v2.9.13 載入實測尺寸（結構：{shoulder:{v,max}, ...}）
-  pmMeasurements = p?.measurements ? JSON.parse(JSON.stringify(p.measurements)) : {};
+  // ★ v2.9.16 載入實測尺寸（新結構 {elastic, bySize} + 舊格式自動遷移）
+  pmMeasurements = migrateMeasurementsIfNeeded(p?.measurements, pmSizes);
   renderPmMeasurements();
   // 庫存：從現有 stockMap 載入，或從 stock 平均分配作為起始值
   if (p?.stockMap && Object.keys(p.stockMap).length > 0) {
@@ -5549,6 +5565,10 @@ function renderPmVariantChips() {
   if (typeof renderImageGallery === 'function' && document.getElementById('pm-gallery')) {
     renderImageGallery();
   }
+  // ★ v2.9.16 尺碼變了 → 實測尺寸表重繪
+  if (typeof renderPmMeasurements === 'function' && document.getElementById('pm-measurements-grid')) {
+    renderPmMeasurements();
+  }
 
   const allSizes = getAllSizes();
   pmSizes.forEach(s => { if (!allSizes.includes(s)) allSizes.unshift(s); });
@@ -5979,62 +5999,166 @@ function addImageByUrl() {
 const MAX_MODEL_PHOTOS = 10;
 
 // ============================================================
-// 📏 商品實測尺寸（v2.9.13）
+// 📏 商品實測尺寸（v2.9.16 每尺碼獨立 + 全局彈性）
 // ============================================================
 function renderPmMeasurements() {
   const el = document.getElementById('pm-measurements-grid');
   if (!el) return;
-  el.innerHTML = MEASURE_FIELDS.map(f => {
-    const data = pmMeasurements[f.key] || {};
-    const v = data.v ?? '';
-    const max = data.max ?? '';
-    return `
-      <div style="display:grid;grid-template-columns:72px 1fr 1fr;gap:8px;align-items:center;padding:8px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
-        <label style="font-size:13px;font-weight:700;color:var(--primary);text-align:right;">${f.icon} ${f.label}</label>
-        <div style="display:flex;align-items:center;gap:4px;">
-          <input type="number" inputmode="decimal" step="0.5" min="0" max="300" value="${v}" placeholder="數值" oninput="updatePmMeasurement('${f.key}', 'v', this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right;">
-          <span style="font-size:11px;color:var(--text-muted);">cm</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;">
-          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">彈性可到</span>
-          <input type="number" inputmode="decimal" step="0.5" min="0" max="300" value="${max}" placeholder="（選填）" oninput="updatePmMeasurement('${f.key}', 'max', this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right;">
-          <span style="font-size:11px;color:var(--text-muted);">cm</span>
-        </div>
+  const type = pmMeasurements.type || '';
+  // ★ v2.9.17 類型選擇器（永遠顯示）
+  const typeSelector = `
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f0f7f1;border:1px solid #7BA482;border-radius:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;font-weight:700;color:var(--primary);">📐 商品類型</span>
+      <select onchange="updatePmMeasurementType(this.value)" style="flex:1;min-width:180px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff;cursor:pointer;">
+        ${MEASURE_PRESETS.map(p => `<option value="${p.code}"${p.code === type ? ' selected' : ''}>${p.label}</option>`).join('')}
+      </select>
+    </div>
+  `;
+  // 類型 = 空 → 提示選擇即可
+  if (!type) {
+    el.innerHTML = typeSelector + `
+      <div style="padding:14px;background:#faf7f2;border:1px dashed var(--border);border-radius:8px;color:var(--text-muted);font-size:12px;text-align:center;">
+        👆 選商品類型後，會顯示對應的實測欄位（上衣就是胸圍/肩寬/衣長...）
       </div>
     `;
-  }).join('');
-}
-
-function updatePmMeasurement(key, field, val) {
-  const num = val === '' ? null : parseFloat(val);
-  if (!pmMeasurements[key]) pmMeasurements[key] = {};
-  if (num === null || isNaN(num)) {
-    delete pmMeasurements[key][field];
-  } else {
-    pmMeasurements[key][field] = num;
+    return;
   }
-  // 如果整個 key 都空了就刪掉
-  if (Object.keys(pmMeasurements[key]).length === 0) delete pmMeasurements[key];
-  // 不 re-render — 避免焦點消失
+  // 使用當下 pmSizes
+  const sizes = (pmSizes && pmSizes.length > 0) ? pmSizes : [];
+  if (sizes.length === 0) {
+    el.innerHTML = typeSelector + `
+      <div style="padding:14px;background:#faf7f2;border:1px dashed var(--border);border-radius:8px;color:var(--text-muted);font-size:12px;text-align:center;">
+        👆 請先在上方「尺寸」區塊填寫尺碼（例：S/M/L），這裡才會出現表格
+      </div>
+    `;
+    return;
+  }
+  const fields = getMeasureFieldsFor(type);
+  const elastic = pmMeasurements.elastic || '';
+  // 全局彈性輸入
+  let html = typeSelector + `
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <span style="font-size:13px;font-weight:700;color:var(--primary);">✨ 彈性範圍</span>
+      <span style="font-size:11px;color:var(--text-muted);">（整件共用、彈性布料才填）</span>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:4px;">
+        <span style="font-size:11px;color:var(--text-muted);">+</span>
+        <input type="number" inputmode="decimal" step="0.5" min="0" max="30" value="${elastic}" placeholder="0" oninput="updatePmMeasurementElastic(this.value)" style="width:60px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right;">
+        <span style="font-size:11px;color:var(--text-muted);">cm</span>
+      </div>
+    </div>
+  `;
+  // 表格：橫軸=規格、縱軸=尺碼
+  const headerCells = fields.map(f => `<th style="padding:8px 6px;text-align:center;font-size:12px;color:var(--primary);background:var(--surface2);font-weight:700;">${f.icon}<br>${f.label}</th>`).join('');
+  const bodyRows = sizes.map(size => {
+    const row = pmMeasurements.bySize?.[size] || {};
+    const cells = fields.map(f => {
+      const v = row[f.key] ?? '';
+      return `<td style="padding:4px;"><input type="number" inputmode="decimal" step="0.5" min="0" max="300" value="${v}" placeholder="—" oninput="updatePmMeasurement('${size.replace(/'/g, "\\'")}', '${f.key}', this.value)" style="width:100%;min-width:52px;padding:6px 4px;border:1px solid var(--border);border-radius:5px;font-size:13px;text-align:center;background:#fff;"></td>`;
+    }).join('');
+    return `<tr><th style="padding:6px 10px;background:var(--primary);color:#fff;font-size:13px;font-weight:700;text-align:center;white-space:nowrap;">${size}</th>${cells}</tr>`;
+  }).join('');
+  html += `
+    <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
+      <table style="width:100%;border-collapse:separate;border-spacing:0;background:#fff;">
+        <thead><tr><th style="padding:8px 10px;background:var(--surface2);font-size:11px;color:var(--text-muted);">尺碼\\規格</th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+  el.innerHTML = html;
 }
 
-// 儲存時清理：只保留有 v 值的欄位；max <= v 時當作無彈性，刪掉 max
+// ★ v2.9.17 切換類型 → 清掉不屬於這個類型的欄位 → 重繪
+function updatePmMeasurementType(newType) {
+  pmMeasurements.type = newType || '';
+  // 清掉非該類型的欄位（但保留資料以防誤切）其實還是清掉比較乾淨
+  if (newType && pmMeasurements.bySize) {
+    const allowedKeys = getMeasureFieldsFor(newType).map(f => f.key);
+    Object.keys(pmMeasurements.bySize).forEach(size => {
+      const row = pmMeasurements.bySize[size];
+      Object.keys(row).forEach(k => {
+        if (!allowedKeys.includes(k)) delete row[k];
+      });
+      if (Object.keys(row).length === 0) delete pmMeasurements.bySize[size];
+    });
+  }
+  renderPmMeasurements();
+}
+
+function updatePmMeasurement(size, key, val) {
+  const num = val === '' ? null : parseFloat(val);
+  if (!pmMeasurements.bySize) pmMeasurements.bySize = {};
+  if (!pmMeasurements.bySize[size]) pmMeasurements.bySize[size] = {};
+  if (num === null || isNaN(num)) {
+    delete pmMeasurements.bySize[size][key];
+    if (Object.keys(pmMeasurements.bySize[size]).length === 0) delete pmMeasurements.bySize[size];
+  } else {
+    pmMeasurements.bySize[size][key] = num;
+  }
+  // 不 re-render，避免焦點消失
+}
+function updatePmMeasurementElastic(val) {
+  const num = val === '' ? 0 : parseFloat(val);
+  if (isNaN(num) || num < 0) {
+    pmMeasurements.elastic = 0;
+  } else {
+    pmMeasurements.elastic = num;
+  }
+}
+
+// 儲存時清理：保留 type / elastic，只保留 bySize 內有效數字的欄位；移除空尺碼
 function cleanMeasurements(m) {
-  const cleaned = {};
-  if (!m || typeof m !== 'object') return cleaned;
-  Object.keys(m).forEach(key => {
-    const entry = m[key];
-    if (!entry || typeof entry !== 'object') return;
-    const v = entry.v;
-    if (v == null || isNaN(v)) return;
-    const out = { v: Number(v) };
-    const max = entry.max;
-    if (max != null && !isNaN(max) && Number(max) > out.v) {
-      out.max = Number(max);
-    }
-    cleaned[key] = out;
+  const out = { bySize: {} };
+  if (!m || typeof m !== 'object') return out;
+  // ★ v2.9.17 保留 type
+  if (m.type && typeof m.type === 'string') out.type = m.type;
+  const elastic = Number(m.elastic);
+  if (!isNaN(elastic) && elastic > 0) out.elastic = elastic;
+  const bySize = m.bySize || {};
+  Object.keys(bySize).forEach(size => {
+    const row = bySize[size];
+    if (!row || typeof row !== 'object') return;
+    const cleanRow = {};
+    MEASURE_FIELDS.forEach(f => {
+      const v = row[f.key];
+      if (v != null && !isNaN(v)) cleanRow[f.key] = Number(v);
+    });
+    if (Object.keys(cleanRow).length > 0) out.bySize[size] = cleanRow;
   });
-  return cleaned;
+  return out;
+}
+
+// 舊格式自動遷移：{shoulder:{v,max}, ...} → 新 {type, elastic, bySize}
+function migrateMeasurementsIfNeeded(m, sizes) {
+  if (!m || typeof m !== 'object') return { type: '', elastic: 0, bySize: {} };
+  // 新格式：已經有 bySize
+  if (m.bySize && typeof m.bySize === 'object') {
+    return {
+      type: m.type || '',
+      elastic: Number(m.elastic) || 0,
+      bySize: JSON.parse(JSON.stringify(m.bySize)),
+    };
+  }
+  // 舊格式：{shoulder:{v,max}, ...}
+  const oldKeys = ['shoulder', 'bust', 'waist', 'hip'];
+  const hasOldData = oldKeys.some(k => m[k] && typeof m[k] === 'object' && m[k].v != null);
+  if (!hasOldData) return { type: '', elastic: 0, bySize: {} };
+  const row = {};
+  let maxDelta = 0;
+  oldKeys.forEach(k => {
+    if (m[k] && m[k].v != null) {
+      row[k] = Number(m[k].v);
+      if (m[k].max != null && m[k].max > m[k].v) {
+        const d = Number(m[k].max) - Number(m[k].v);
+        if (d > maxDelta) maxDelta = d;
+      }
+    }
+  });
+  // 舊格式沒 type → 預設 custom（4 個欄位都有）
+  const out = { type: 'custom', elastic: maxDelta, bySize: {} };
+  const targetSizes = sizes && sizes.length ? sizes : ['_'];
+  targetSizes.forEach(s => { out.bySize[s] = { ...row }; });
+  return out;
 }
 
 function renderModelPhotos() {
