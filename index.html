@@ -1201,7 +1201,7 @@
         <div class="table-wrap">
           <table class="data-table" id="products-table">
             <thead><tr>
-              <th style="width:60px;">圖</th><th>商品名稱</th><th style="width:70px;text-align:center;">強推</th><th>款號</th><th>條碼</th><th>分類</th><th>廠商</th><th>顏色</th><th>尺寸</th><th>單價</th><th>庫存</th><th style="text-align:right;">操作</th>
+              <th style="width:60px;">圖</th><th>商品名稱</th><th style="width:70px;text-align:center;">強推</th><th>款號</th><th>條碼</th><th>分類</th><th>廠商</th><th>顏色</th><th>尺寸</th><th>單價</th><th>庫存</th><th style="text-align:right;position:sticky;right:0;background:var(--surface2);z-index:2;min-width:120px;box-shadow:-4px 0 8px rgba(0,0,0,.04);">操作</th>
             </tr></thead>
             <tbody id="products-tbody"></tbody>
           </table>
@@ -1603,6 +1603,29 @@
         <div>
           <label style="display:block;font-size:11px;color:var(--text-muted);margin-bottom:3px;">🔗 商品連結（IG 貼文、官網等）</label>
           <input type="text" id="pm-link" placeholder="https://instagram.com/p/..." style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;">
+        </div>
+      </div>
+      <!-- 🧍 模特示範照（v2.9.12） -->
+      <div class="variant-section">
+        <h4>🧍 模特示範照 <span style="font-weight:400;color:var(--text-muted);font-size:11px;">（不同身型示範，最多 10 張；客人在商品詳情頁看得到）</span></h4>
+        <div id="pm-model-photos" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+        <input type="file" id="pm-model-file" accept="image/*" multiple style="display:none;" onchange="onModelPhotoSelected(event)">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('pm-model-file').click()">📷 新增示範照</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="addModelPhotoByUrl()">🔗 加入網址</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="uploadAllToCloudinary()" title="包含示範照一起上傳">☁ 上傳到圖床</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.6;">
+          💡 每張示範照可以標身型（X/O/T/H/A）+ 填備註（身高/體重/穿的尺碼）。客人可以看到不同身型的實穿效果。
+        </div>
+      </div>
+      <!-- 📏 商品實測尺寸（v2.9.13） -->
+      <div class="variant-section">
+        <h4>📏 商品實測尺寸 <span style="font-weight:400;color:var(--text-muted);font-size:11px;">（客人可在官網輸入自己尺寸比對合身度）</span></h4>
+        <div id="pm-measurements-grid" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.6;">
+          💡 <strong>「數值」</strong>是實際量到的尺寸（單位 cm）；<strong>「彈性可到」</strong>選填，有彈性布料才填。<br>
+          🎯 客人在官網輸入自己尺寸 → 客人尺寸 ≤ 商品彈性上限（或數值）→ 顯示 ✓ 適合。
         </div>
       </div>
       <!-- 材質（英文網格，只填 %；會自動組成標籤字串顯示在官網詳情頁）-->
@@ -2484,6 +2507,16 @@ let pmSizes = [];
 // ★ v2.9.9 每個顏色對應的 hex 色碼（例：{ 杏: '#E5C9A8' }）
 // 用 Object 結構的原因：可跟 pmColors 分離、向後相容舊資料（沒此欄位就退回純文字）
 let pmColorSwatches = {};
+// ★ v2.9.13 商品實測尺寸（單位 cm，客人輸入自己尺寸會比對）
+// 結構：{ shoulder: {v: 38, max: 42}, bust: {v: 90}, ... }
+// max 選填，代表彈性可到的最大值。沒填 max 就當作固定尺寸（客人尺寸 ≤ v 才適合）
+let pmMeasurements = {};
+const MEASURE_FIELDS = [
+  { key: 'shoulder', label: '肩寬', icon: '👕' },
+  { key: 'bust',     label: '胸圍', icon: '💠' },
+  { key: 'waist',    label: '腰圍', icon: '⌛' },
+  { key: 'hip',      label: '臀圍', icon: '🍑' },
+];
 let vmSelectedColor = '';
 let vmSelectedSize = '';
 
@@ -3585,7 +3618,7 @@ function renderProductsTable() {
         ${mainImg ? `<div style="position:relative;width:42px;height:42px;border-radius:6px;background:url('${mainImg.replace(/'/g, "\\'")}') center/cover;border:1px solid var(--border);cursor:pointer;" onclick="showImagePreview('${mainImg.replace(/'/g, "\\'")}', '${(p.name||'').replace(/'/g, "\\'")}')">${imgCount > 1 ? `<div style="position:absolute;bottom:-2px;right:-2px;background:var(--gold);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;border:1px solid #fff;">${imgCount}</div>` : ''}</div>` : `<div style="width:42px;height:42px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--border);font-size:18px;">🖼</div>`}
       </td>
       <td>
-        <strong style="color:var(--primary);">${p.name}</strong>
+        <strong onclick="openProductModal('${p.id}')" title="點擊編輯" style="color:var(--primary);cursor:pointer;text-decoration:underline;text-decoration-color:transparent;transition:.15s;" onmouseover="this.style.textDecorationColor='var(--gold)'" onmouseout="this.style.textDecorationColor='transparent'">${p.name}</strong>
         ${(productViewCounts[p.id] > 0) ? `<span title="官網觀看次數" style="display:inline-block;margin-left:6px;padding:2px 8px;font-size:10px;border-radius:9px;font-weight:700;vertical-align:middle;background:rgba(90,120,140,.12);color:#5A788C;border:1px solid rgba(90,120,140,.25);">👁 ${productViewCounts[p.id]}</span>` : ''}
         ${p.link ? `<a href="${p.link}" target="_blank" rel="noopener" style="margin-left:6px;text-decoration:none;color:var(--gold);font-size:13px;" title="${p.link}" onclick="event.stopPropagation()">🔗</a>` : ''}
         <button
@@ -3615,12 +3648,13 @@ function renderProductsTable() {
           ? '<span class="badge" style="background:linear-gradient(135deg,#8B6F47,#A68968);color:#fff;">🎀 預購</span>'
           : `<span class="badge ${stock===0?'badge-red':stock<=5?'badge-orange':'badge-green'}">${stock===0?'售完':stock<=5?'剩 '+stock:stock}</span>`}
       </td>
-      <td style="text-align:right;white-space:nowrap;">
-        ${pmBulkMode ? `<input type="checkbox" class="pm-bulk-check" data-id="${p.id}" ${pmBulkSelected.has(p.id) ? 'checked' : ''} onchange="togglePmBulkPick('${p.id}')" style="width:20px;height:20px;cursor:pointer;accent-color:#c9a84c;margin-right:4px;vertical-align:middle;">` : ''}
-        <button class="btn btn-sm" onclick="toggleProductFeatured('${p.id}')" title="${p.featured ? '取消強推' : '設為官網強推'}" style="background:${p.featured ? '#c9a84c' : 'transparent'};color:${p.featured ? '#fff' : '#c9a84c'};border:1px solid #c9a84c;padding:4px 9px;font-size:14px;line-height:1;">${p.featured ? '⭐' : '☆'}</button>
-        ${p.preorder === true ? `<button class="btn btn-sm" onclick="convertPreorderToRegular('${p.id}')" title="貨到了，轉為一般商品並輸入庫存" style="background:#8B6F47;color:#fff;border:none;">🎀→📦 到貨</button>` : ''}
-        <button class="btn btn-outline btn-sm" onclick="openProductModal('${p.id}')">編輯</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">刪除</button>
+      <td style="text-align:right;white-space:nowrap;position:sticky;right:0;background:${dimmed ? '#fafafa' : '#fff'};box-shadow:-4px 0 8px rgba(0,0,0,.04);">
+        <div style="display:inline-flex;gap:4px;align-items:center;">
+          ${pmBulkMode ? `<input type="checkbox" class="pm-bulk-check" data-id="${p.id}" ${pmBulkSelected.has(p.id) ? 'checked' : ''} onchange="togglePmBulkPick('${p.id}')" style="width:20px;height:20px;cursor:pointer;accent-color:#c9a84c;margin-right:2px;vertical-align:middle;">` : ''}
+          ${p.preorder === true ? `<button onclick="convertPreorderToRegular('${p.id}')" title="貨到了，轉為一般商品並輸入庫存" style="width:32px;height:32px;padding:0;background:#8B6F47;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">📦</button>` : ''}
+          <button onclick="openProductModal('${p.id}')" title="編輯商品" style="width:32px;height:32px;padding:0;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">✏️</button>
+          <button onclick="deleteProduct('${p.id}')" title="刪除商品" style="width:32px;height:32px;padding:0;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🗑️</button>
+        </div>
       </td>
     </tr>
   `;
@@ -4262,12 +4296,18 @@ function openProductModal(id) {
     pmImages = [];
   }
   renderImageGallery();
+  // ★ v2.9.12 載入模特示範照
+  pmModelPhotos = Array.isArray(p?.modelPhotos) ? p.modelPhotos.map(m => ({...m})) : [];
+  renderModelPhotos();
   pmCat = p?.cat || '';
   pmVendor = p?.vendor || '';
   pmColors = p ? [...(p.colors||[])] : [];
   pmSizes = p ? [...(p.sizes||[])] : [];
   // ★ v2.9.9 載入色碼 map（舊商品沒有此欄位就是空 obj）
   pmColorSwatches = p?.colorSwatches ? {...p.colorSwatches} : {};
+  // ★ v2.9.13 載入實測尺寸（結構：{shoulder:{v,max}, ...}）
+  pmMeasurements = p?.measurements ? JSON.parse(JSON.stringify(p.measurements)) : {};
+  renderPmMeasurements();
   // 庫存：從現有 stockMap 載入，或從 stock 平均分配作為起始值
   if (p?.stockMap && Object.keys(p.stockMap).length > 0) {
     pmStockMap = { ...p.stockMap };
@@ -5329,6 +5369,8 @@ function saveProductSilent() {
     stockMap: cleanStock,
     stock: calcStockTotal(cleanStock),
     images: [...pmImages],
+    modelPhotos: pmModelPhotos.map(m => ({...m})),
+    measurements: cleanMeasurements(pmMeasurements),
     image: pmImages[0] || '',
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
@@ -5696,6 +5738,8 @@ function saveProduct() {
     stockMap: cleanStock,
     stock: calcStockTotal(cleanStock),
     images: [...pmImages],
+    modelPhotos: pmModelPhotos.map(m => ({...m})),
+    measurements: cleanMeasurements(pmMeasurements),
     image: pmImages[0] || '', // 主圖向後相容
     link: document.getElementById('pm-link').value.trim(),
     note: document.getElementById('pm-note').value.trim(),
@@ -5795,6 +5839,15 @@ function bulkOnlineShop(state) {
 
 // 商品照片狀態（陣列，多張）
 let pmImages = [];
+// ★ v2.9.12 模特示範照陣列：[{url, bodyType('X'|'O'|'T'|'H'|'A'), note}]
+let pmModelPhotos = [];
+const BODY_TYPES = [
+  { code: 'X', label: 'X型', desc: '沙漏' },
+  { code: 'O', label: 'O型', desc: '圓潤' },
+  { code: 'T', label: 'T型', desc: '上寬下窄' },
+  { code: 'H', label: 'H型', desc: '直筒' },
+  { code: 'A', label: 'A型', desc: '梨形' },
+];
 const MAX_IMAGES = 8;
 
 function setProductImagePreview(imagesArray) {
@@ -5876,6 +5929,162 @@ function addImageByUrl() {
   toast('已加入照片', 'success');
 }
 
+// ============================================================
+// 🧍 模特示範照（v2.9.12）
+// ============================================================
+const MAX_MODEL_PHOTOS = 10;
+
+// ============================================================
+// 📏 商品實測尺寸（v2.9.13）
+// ============================================================
+function renderPmMeasurements() {
+  const el = document.getElementById('pm-measurements-grid');
+  if (!el) return;
+  el.innerHTML = MEASURE_FIELDS.map(f => {
+    const data = pmMeasurements[f.key] || {};
+    const v = data.v ?? '';
+    const max = data.max ?? '';
+    return `
+      <div style="display:grid;grid-template-columns:72px 1fr 1fr;gap:8px;align-items:center;padding:8px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+        <label style="font-size:13px;font-weight:700;color:var(--primary);text-align:right;">${f.icon} ${f.label}</label>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <input type="number" inputmode="decimal" step="0.5" min="0" max="300" value="${v}" placeholder="數值" oninput="updatePmMeasurement('${f.key}', 'v', this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right;">
+          <span style="font-size:11px;color:var(--text-muted);">cm</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">彈性可到</span>
+          <input type="number" inputmode="decimal" step="0.5" min="0" max="300" value="${max}" placeholder="（選填）" oninput="updatePmMeasurement('${f.key}', 'max', this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:right;">
+          <span style="font-size:11px;color:var(--text-muted);">cm</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updatePmMeasurement(key, field, val) {
+  const num = val === '' ? null : parseFloat(val);
+  if (!pmMeasurements[key]) pmMeasurements[key] = {};
+  if (num === null || isNaN(num)) {
+    delete pmMeasurements[key][field];
+  } else {
+    pmMeasurements[key][field] = num;
+  }
+  // 如果整個 key 都空了就刪掉
+  if (Object.keys(pmMeasurements[key]).length === 0) delete pmMeasurements[key];
+  // 不 re-render — 避免焦點消失
+}
+
+// 儲存時清理：只保留有 v 值的欄位；max <= v 時當作無彈性，刪掉 max
+function cleanMeasurements(m) {
+  const cleaned = {};
+  if (!m || typeof m !== 'object') return cleaned;
+  Object.keys(m).forEach(key => {
+    const entry = m[key];
+    if (!entry || typeof entry !== 'object') return;
+    const v = entry.v;
+    if (v == null || isNaN(v)) return;
+    const out = { v: Number(v) };
+    const max = entry.max;
+    if (max != null && !isNaN(max) && Number(max) > out.v) {
+      out.max = Number(max);
+    }
+    cleaned[key] = out;
+  });
+  return cleaned;
+}
+
+function renderModelPhotos() {
+  const el = document.getElementById('pm-model-photos');
+  if (!el) return;
+  if (pmModelPhotos.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted);font-size:12px;background:#faf7f2;border:1px dashed var(--border);border-radius:8px;">尚無示範照，點下方「📷 新增示範照」或「🔗 加入網址」開始</div>';
+    return;
+  }
+  el.innerHTML = pmModelPhotos.map((m, i) => {
+    const isDataUrl = (m.url || '').startsWith('data:');
+    const bodyOptions = BODY_TYPES.map(bt =>
+      `<option value="${bt.code}"${m.bodyType === bt.code ? ' selected' : ''}>${bt.label}（${bt.desc}）</option>`
+    ).join('');
+    return `
+      <div style="display:flex;gap:10px;align-items:flex-start;padding:10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+        <div style="width:72px;height:96px;border-radius:6px;background:url('${(m.url||'').replace(/'/g, "\\'")}') center/cover, var(--surface2);flex-shrink:0;border:1px solid var(--border);cursor:pointer;position:relative;" onclick="showImagePreview('${(m.url||'').replace(/'/g, "\\'")}','示範照')">
+          ${isDataUrl ? '<div style="position:absolute;top:2px;left:2px;background:#f59e0b;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;font-weight:700;">未上傳</div>' : ''}
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;">
+          <select onchange="updateModelPhoto(${i}, 'bodyType', this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;">
+            ${bodyOptions}
+          </select>
+          <input type="text" value="${escapeHtml(m.note || '')}" oninput="updateModelPhoto(${i}, 'note', this.value)" maxlength="30" placeholder="備註（身高/體重/尺碼）" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+          ${i > 0 ? `<button type="button" onclick="moveModelPhoto(${i}, -1)" title="上移" style="background:transparent;border:1px solid var(--border);color:var(--text-soft);padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;">▲</button>` : `<div style="height:22px;"></div>`}
+          ${i < pmModelPhotos.length - 1 ? `<button type="button" onclick="moveModelPhoto(${i}, 1)" title="下移" style="background:transparent;border:1px solid var(--border);color:var(--text-soft);padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;">▼</button>` : `<div style="height:22px;"></div>`}
+          <button type="button" onclick="removeModelPhoto(${i})" title="刪除" style="background:transparent;border:1px solid var(--danger);color:var(--danger);padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer;">🗑</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateModelPhoto(idx, field, val) {
+  if (!pmModelPhotos[idx]) return;
+  pmModelPhotos[idx][field] = val;
+  // note/bodyType 變更不用整個重繪，避免焦點消失
+}
+
+function moveModelPhoto(idx, direction) {
+  const target = idx + direction;
+  if (target < 0 || target >= pmModelPhotos.length) return;
+  [pmModelPhotos[idx], pmModelPhotos[target]] = [pmModelPhotos[target], pmModelPhotos[idx]];
+  renderModelPhotos();
+}
+
+function removeModelPhoto(idx) {
+  if (!confirm('刪除這張示範照？')) return;
+  pmModelPhotos.splice(idx, 1);
+  renderModelPhotos();
+}
+
+function addModelPhotoByUrl() {
+  if (pmModelPhotos.length >= MAX_MODEL_PHOTOS) { toast(`最多 ${MAX_MODEL_PHOTOS} 張示範照`, 'warn'); return; }
+  const url = prompt('請貼上示範照網址（https://...）：', '');
+  if (!url) return;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('http')) { toast('請輸入有效的網址', 'error'); return; }
+  pmModelPhotos.push({ url: trimmed, bodyType: 'X', note: '' });
+  renderModelPhotos();
+  toast('已加入示範照，記得選身型', 'success');
+}
+
+async function onModelPhotoSelected(event) {
+  const files = Array.from(event.target.files);
+  event.target.value = '';
+  if (!files.length) return;
+  const remaining = MAX_MODEL_PHOTOS - pmModelPhotos.length;
+  if (remaining <= 0) { toast(`已達 ${MAX_MODEL_PHOTOS} 張上限`, 'warn'); return; }
+  const toProcess = files.slice(0, remaining);
+  if (files.length > remaining) {
+    toast(`只能再新增 ${remaining} 張`, 'warn');
+  }
+  let processed = 0;
+  for (const file of toProcess) {
+    if (!file.type.startsWith('image/')) continue;
+    if (file.size > 15 * 1024 * 1024) {
+      toast(`${file.name} 超過 15MB，已略過`, 'warn');
+      continue;
+    }
+    try {
+      const dataUrl = await compressImage(file, 1600, 0.88);
+      pmModelPhotos.push({ url: dataUrl, bodyType: 'X', note: '' });
+      processed++;
+    } catch (err) { console.error(err); }
+  }
+  renderModelPhotos();
+  if (processed) {
+    toast(`已加入 ${processed} 張示範照，記得選身型${appSettings.cloudinaryCloud ? '，並點「☁ 上傳到圖床」' : ''}`, 'success');
+  }
+}
+
 async function onProductImageSelected(event) {
   const files = Array.from(event.target.files);
   event.target.value = ''; // reset for re-upload same file
@@ -5910,7 +6119,7 @@ async function onProductImageSelected(event) {
   }
 }
 
-// 上傳所有 base64 圖片到 Cloudinary
+// 上傳所有 base64 圖片到 Cloudinary（包含商品照 + 模特示範照 v2.9.12）
 async function uploadAllToCloudinary() {
   const cloudName = appSettings.cloudinaryCloud;
   const preset = appSettings.cloudinaryPreset;
@@ -5920,10 +6129,14 @@ async function uploadAllToCloudinary() {
     return;
   }
 
-  // 找出所有還是 base64 的圖片
-  const targets = pmImages
-    .map((src, idx) => ({ src, idx }))
-    .filter(x => x.src.startsWith('data:'));
+  // 找出所有還是 base64 的圖片（商品照 + 示範照）
+  const targets = [];
+  pmImages.forEach((src, idx) => {
+    if (src.startsWith('data:')) targets.push({ kind: 'image', src, idx });
+  });
+  pmModelPhotos.forEach((m, idx) => {
+    if (m.url && m.url.startsWith('data:')) targets.push({ kind: 'model', src: m.url, idx });
+  });
 
   if (!targets.length) {
     toast('所有照片都已是網址，無需上傳', 'success');
@@ -5940,7 +6153,8 @@ async function uploadAllToCloudinary() {
     btn.textContent = `☁ 上傳中 ${i+1}/${targets.length}...`;
     try {
       const url = await uploadOneToCloudinary(targets[i].src, cloudName, preset);
-      pmImages[targets[i].idx] = url;
+      if (targets[i].kind === 'image') pmImages[targets[i].idx] = url;
+      else pmModelPhotos[targets[i].idx].url = url;
       success++;
     } catch (err) {
       console.error('上傳失敗', err);
@@ -5948,6 +6162,7 @@ async function uploadAllToCloudinary() {
     }
   }
   renderImageGallery();
+  renderModelPhotos();
   btn.disabled = false;
   btn.textContent = originalText;
 
