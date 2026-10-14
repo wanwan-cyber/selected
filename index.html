@@ -4311,9 +4311,14 @@ function openProductModal(id) {
   } else {
     pmImages = [];
   }
-  // ★ v2.9.15 載入照片 → 顏色對應（補齊到跟 pmImages 等長）
+  // ★ v2.9.18 載入照片 → 顏色對應（陣列，支援一張對多色；舊格式字串自動轉成單元素陣列）
   const srcColors = Array.isArray(p?.imageColors) ? p.imageColors : [];
-  pmImageColors = pmImages.map((_, i) => srcColors[i] || '');
+  pmImageColors = pmImages.map((_, i) => {
+    const v = srcColors[i];
+    if (Array.isArray(v)) return v.filter(c => c);
+    if (typeof v === 'string' && v) return [v];
+    return [];
+  });
   renderImageGallery();
   // ★ v2.9.12 載入模特示範照
   pmModelPhotos = Array.isArray(p?.modelPhotos) ? p.modelPhotos.map(m => ({...m})) : [];
@@ -5561,7 +5566,14 @@ function renderPmVariantChips() {
   document.getElementById('pm-color-chips').innerHTML = colorChipsHtml + eyedropperBtn + renderVariantOrderBar('color', pmColors);
   // ★ v2.9.15 顏色清單變了 → 照片顏色下拉也要刷新
   // 同時清掉已不存在於 pmColors 的 imageColors 值
-  pmImageColors = pmImageColors.map(c => (c && pmColors.includes(c)) ? c : '');
+  // ★ v2.9.18 清掉照片顏色對應中已不存在於 pmColors 的顏色
+  pmImageColors = pmImageColors.map(arr => {
+    if (!Array.isArray(arr)) {
+      // 相容舊格式（字串）
+      return (arr && pmColors.includes(arr)) ? [arr] : [];
+    }
+    return arr.filter(c => pmColors.includes(c));
+  });
   if (typeof renderImageGallery === 'function' && document.getElementById('pm-gallery')) {
     renderImageGallery();
   }
@@ -5898,14 +5910,21 @@ function setProductImagePreview(imagesArray) {
 function renderImageGallery() {
   const el = document.getElementById('pm-gallery');
   if (!el) return;
-  // ★ v2.9.15 每張圖下面加顏色下拉（屬於哪個顏色）
-  const colorOpts = (currentColor) => {
-    const current = currentColor || '';
-    const options = pmColors.map(c => `<option value="${escapeAttr ? escapeAttr(c) : c}"${c === current ? ' selected' : ''}>${c}</option>`).join('');
-    return `<option value=""${!current ? ' selected' : ''}>通用（不綁顏色）</option>${options}`;
+  // ★ v2.9.18 每張圖下面是多選 chip（可選多個顏色，一張照片可以對應多色）
+  const renderColorChips = (idx) => {
+    if (pmColors.length === 0) {
+      return '<div style="font-size:10px;color:var(--text-muted);padding:2px 0;">（先填顏色）</div>';
+    }
+    const selected = pmImageColors[idx] || [];
+    return `<div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center;max-width:120px;">
+      ${pmColors.map(c => {
+        const on = selected.includes(c);
+        return `<button type="button" onclick="toggleImageColor(${idx}, '${c.replace(/'/g, "\\'")}')" title="${on ? '已綁定' : '點擊綁定'}" style="padding:2px 6px;border-radius:8px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid var(--gold);background:${on ? 'var(--gold)' : '#fff'};color:${on ? '#fff' : 'var(--gold)'};line-height:1.2;white-space:nowrap;">${on ? '✓ ' : ''}${c}</button>`;
+      }).join('')}
+    </div>`;
   };
   let html = pmImages.map((src, idx) => `
-    <div style="display:inline-flex;flex-direction:column;align-items:center;gap:4px;margin:0 10px 14px 4px;">
+    <div style="display:inline-flex;flex-direction:column;align-items:center;gap:5px;margin:0 10px 14px 4px;vertical-align:top;">
       <div style="position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:url('${src.replace(/'/g, "\\'")}') center/cover, var(--bg);">
         ${idx === 0 ? '<div style="position:absolute;top:2px;left:2px;background:var(--gold);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;">主圖</div>' : ''}
         ${src.startsWith('data:') ? '<div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;">本地</div>' : '<div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:rgba(39,174,96,.85);color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;">☁</div>'}
@@ -5914,9 +5933,7 @@ function renderImageGallery() {
         ${idx > 0 ? `<button type="button" onclick="moveImage(${idx}, -1)" style="position:absolute;bottom:-4px;left:-4px;background:var(--primary);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="往前移一格">◀</button>` : ''}
         ${idx < pmImages.length - 1 ? `<button type="button" onclick="moveImage(${idx}, 1)" style="position:absolute;bottom:-4px;right:-4px;background:var(--primary);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:11px;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.2);" title="往後移一格">▶</button>` : ''}
       </div>
-      <select onchange="updateImageColor(${idx}, this.value)" title="這張照片屬於哪個顏色" style="width:80px;padding:3px 4px;border:1px solid var(--border);border-radius:5px;font-size:10px;background:#fff;cursor:pointer;${pmImageColors[idx] ? 'border-color:var(--gold);background:#fffbf0;' : ''}">
-        ${pmColors.length === 0 ? '<option>（先填顏色）</option>' : colorOpts(pmImageColors[idx])}
-      </select>
+      ${renderColorChips(idx)}
     </div>
   `).join('');
   // 顯示「還可以新增 N 張」提示
@@ -5935,9 +5952,13 @@ function renderImageGallery() {
   el.innerHTML = html;
 }
 
-// ★ v2.9.15 更新照片對應顏色
-function updateImageColor(idx, color) {
-  pmImageColors[idx] = color || '';
+// ★ v2.9.18 切換照片對應的顏色（多選）
+function toggleImageColor(idx, color) {
+  if (!Array.isArray(pmImageColors[idx])) pmImageColors[idx] = [];
+  const arr = pmImageColors[idx];
+  const pos = arr.indexOf(color);
+  if (pos >= 0) arr.splice(pos, 1);
+  else arr.push(color);
   renderImageGallery();
 }
 
@@ -5962,9 +5983,9 @@ function moveImageFirst(idx) {
   if (idx <= 0 || idx >= pmImages.length) return;
   const [item] = pmImages.splice(idx, 1);
   pmImages.unshift(item);
-  // ★ v2.9.15 顏色對應同步移到最前
+  // ★ v2.9.18 顏色對應同步（陣列）
   const [colorItem] = pmImageColors.splice(idx, 1);
-  pmImageColors.unshift(colorItem || '');
+  pmImageColors.unshift(colorItem || []);
   renderImageGallery();
   toast('已設為主圖', 'success');
 }
@@ -5975,9 +5996,9 @@ function moveImage(idx, direction) {
   if (newIdx < 0 || newIdx >= pmImages.length) return;
   const [item] = pmImages.splice(idx, 1);
   pmImages.splice(newIdx, 0, item);
-  // ★ v2.9.15 顏色對應同步跟著移動
+  // ★ v2.9.18 顏色對應同步
   const [colorItem] = pmImageColors.splice(idx, 1);
-  pmImageColors.splice(newIdx, 0, colorItem || '');
+  pmImageColors.splice(newIdx, 0, colorItem || []);
   renderImageGallery();
 }
 
@@ -5988,7 +6009,7 @@ function addImageByUrl() {
   const trimmed = url.trim();
   if (!trimmed.startsWith('http')) { toast('請輸入有效的網址', 'error'); return; }
   pmImages.push(trimmed);
-  pmImageColors.push(''); // ★ v2.9.15 預設通用
+  pmImageColors.push([]); // ★ v2.9.15 預設通用
   renderImageGallery();
   toast('已加入照片', 'success');
 }
@@ -6276,7 +6297,7 @@ async function onProductImageSelected(event) {
     try {
       const dataUrl = await compressImage(file, 1600, 0.88);
       pmImages.push(dataUrl);
-      pmImageColors.push(''); // ★ v2.9.15 預設通用
+      pmImageColors.push([]); // ★ v2.9.15 預設通用
       processed++;
     } catch (err) {
       console.error(err);
