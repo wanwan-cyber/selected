@@ -2377,7 +2377,7 @@
 <!-- 🎨 從照片取色 modal（v2.9.9） -->
 <!-- 🔄 線上訂單替換商品 modal (v2.9.24) -->
 <div class="modal-overlay" id="order-swap-modal">
-  <div class="modal" style="max-width:560px;">
+  <div class="modal" style="max-width:720px;">
     <div class="modal-head">
       <h3>🔄 替換商品</h3>
       <button class="modal-close" onclick="closeModal('order-swap-modal')">×</button>
@@ -2386,7 +2386,7 @@
       <div style="padding:10px 12px;background:#fff3e0;border-left:3px solid #D49768;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.7;color:#8B6F47;">
         💡 挑選要替換成的新商品 + 規格 + 數量，訂單金額會自動更新為新價錢。<br>
         🎯 替換後需 LINE 跟客人收/退差額。<br>
-        🔍 清單含店內所有商品（含未上架），可用名稱或款號搜尋。
+        🔍 跟收銀介面一樣的格狀卡片，已售完商品不會顯示。
       </div>
       <!-- 原商品資訊 -->
       <div id="swap-original" style="padding:10px 12px;background:#f5f5f5;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
@@ -2394,7 +2394,7 @@
       <div style="margin-bottom:10px;">
         <input type="text" id="swap-search" placeholder="🔍 搜尋商品名稱 / 款號" oninput="swapFilterProducts()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
       </div>
-      <div id="swap-product-list" style="max-height:35vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#faf7f2;"></div>
+      <div id="swap-product-list" style="max-height:45vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#faf7f2;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;align-content:start;"></div>
       <!-- 選定商品後的規格選擇 -->
       <div id="swap-variant-section" style="display:none;margin-top:12px;padding:12px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;">
         <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:8px;" id="swap-selected-name"></div>
@@ -2422,7 +2422,7 @@
 
 <!-- ➕ 線上訂單加品項 modal (v2.9.27) -->
 <div class="modal-overlay" id="order-add-item-modal">
-  <div class="modal" style="max-width:560px;">
+  <div class="modal" style="max-width:720px;">
     <div class="modal-head">
       <h3>➕ 加商品到訂單</h3>
       <button class="modal-close" onclick="closeModal('order-add-item-modal')">×</button>
@@ -2431,7 +2431,7 @@
       <div style="padding:10px 12px;background:#e8f5e8;border-left:3px solid #4a8a4a;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.7;color:#2d7a2d;">
         💡 把額外商品加到這張訂單（例：加送、補償、客人追加）。<br>
         🎯 加品項後總金額會更新，需 LINE 跟客人說明。<br>
-        🔍 清單含店內所有商品。
+        🔍 跟收銀介面一樣的格狀卡片，已售完商品不會顯示。
       </div>
       <!-- 訂單目前資訊 -->
       <div id="additem-order-info" style="padding:10px 12px;background:#f5f5f5;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
@@ -2441,7 +2441,7 @@
       <div style="margin-bottom:10px;">
         <input type="text" id="additem-search" placeholder="🔍 搜尋商品名稱 / 款號" oninput="addItemFilterProducts()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
       </div>
-      <div id="additem-product-list" style="max-height:35vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#faf7f2;"></div>
+      <div id="additem-product-list" style="max-height:45vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#faf7f2;padding:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;align-content:start;"></div>
       <!-- 選定商品後的規格選擇 -->
       <div id="additem-variant-section" style="display:none;margin-top:12px;padding:12px;background:#f0f8f0;border:1px solid #4a8a4a;border-radius:8px;">
         <div style="font-size:13px;font-weight:700;color:#2d7a2d;margin-bottom:8px;" id="additem-selected-name"></div>
@@ -12183,38 +12183,50 @@ function openSwapOrderItemModal(orderNo, itemIdx) {
   }
 }
 
+// ★ v2.9.28 用收銀介面的卡片格呈現 + 過濾已售完
 function swapFilterProducts() {
   const q = (document.getElementById('swap-search')?.value || '').trim().toLowerCase();
   const el = document.getElementById('swap-product-list');
   if (!el) return;
-  // ★ v2.9.27 顯示所有商品（含未上架），讓 Wan 補償客人時可以選店內任何品
   const list = products
     .filter(p => {
+      if (getProductStock(p) <= 0) return false; // 已售完不顯示
       if (!q) return true;
       return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
     })
     .slice(0, 100);
   if (list.length === 0) {
-    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品</div>';
+    el.innerHTML = '<div style="grid-column:1/-1;padding:30px 16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品（已過濾售完）</div>';
     return;
   }
-  el.innerHTML = list.map(p => {
-    const mainImg = (p.images && p.images[0]) || p.image || '';
-    const thumb = mainImg
-      ? `<div style="width:40px;height:40px;border-radius:6px;background:url('${mainImg.replace(/'/g,"\\'")}') center/cover;flex-shrink:0;"></div>`
-      : `<div style="width:40px;height:40px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">🖼</div>`;
-    const isSelected = _swapState.productId === p.id;
-    return `
-      <div onclick="swapSelectProduct('${p.id}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);${isSelected ? 'background:#fffbf0;' : ''}" onmouseover="this.style.background='#fff8e8';" onmouseout="this.style.background='${isSelected ? '#fffbf0' : ''}';">
-        ${thumb}
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;color:var(--primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div>
-          <div style="font-size:11px;color:var(--text-muted);">${p.sku || ''} · $${p.price || 0}</div>
-        </div>
-        ${isSelected ? '<span style="color:var(--gold);font-size:14px;">✓</span>' : ''}
+  el.innerHTML = list.map(p => renderPickerCard(p, _swapState.productId === p.id, 'swap')).join('');
+}
+
+// 共用：picker 卡片（跟收銀介面同款）
+function renderPickerCard(p, isSelected, mode) {
+  const mainImg = (p.images && p.images[0]) || p.image || '';
+  const totalStock = getProductStock(p);
+  const lowStock = totalStock > 0 && totalStock <= 3;
+  const variants = [];
+  if (p.colors && p.colors.length) variants.push(p.colors.slice(0, 3).join(' · '));
+  if (p.sizes && p.sizes.length) variants.push(p.sizes.join('/'));
+  const handler = mode === 'swap' ? 'swapSelectProduct' : 'addItemSelectProduct';
+  const borderStyle = isSelected ? 'border-color:var(--gold);box-shadow:0 0 0 2px rgba(201,168,76,.35);' : (lowStock ? '' : '');
+  return `
+    <div class="product-card${lowStock ? ' low-stock' : ''}" onclick="${handler}('${p.id}')" style="${borderStyle}">
+      ${mainImg
+        ? `<div class="p-thumb" style="background-image:url('${mainImg.replace(/'/g,"\\'")}')"></div>`
+        : `<div class="p-thumb" style="display:flex;align-items:center;justify-content:center;font-size:32px;color:var(--text-muted);">🖼</div>`}
+      <div class="p-cat">${escapeHtml(p.cat || '')}</div>
+      <div class="p-name">${escapeHtml(p.name || '')}</div>
+      ${variants.length ? `<div class="p-variants">${escapeHtml(variants.join(' · '))}</div>` : ''}
+      <div class="p-bottom">
+        <div class="p-price">$${p.price || 0}</div>
+        <div class="p-stock">${lowStock ? `⚠ 剩 ${totalStock}` : `剩 ${totalStock}`}</div>
       </div>
-    `;
-  }).join('');
+      ${isSelected ? '<span style="position:absolute;top:6px;right:6px;background:var(--gold);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">✓</span>' : ''}
+    </div>
+  `;
 }
 
 function swapSelectProduct(pid) {
@@ -12428,37 +12440,23 @@ function renderAddItemExisting() {
   `;
 }
 
+// ★ v2.9.28 用收銀介面的卡片格呈現 + 過濾已售完
 function addItemFilterProducts() {
   const q = (document.getElementById('additem-search')?.value || '').trim().toLowerCase();
   const el = document.getElementById('additem-product-list');
   if (!el) return;
   const list = products
     .filter(p => {
+      if (getProductStock(p) <= 0) return false; // 已售完不顯示
       if (!q) return true;
       return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
     })
     .slice(0, 100);
   if (list.length === 0) {
-    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品</div>';
+    el.innerHTML = '<div style="grid-column:1/-1;padding:30px 16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品（已過濾售完）</div>';
     return;
   }
-  el.innerHTML = list.map(p => {
-    const mainImg = (p.images && p.images[0]) || p.image || '';
-    const thumb = mainImg
-      ? `<div style="width:40px;height:40px;border-radius:6px;background:url('${mainImg.replace(/'/g,"\\'")}') center/cover;flex-shrink:0;"></div>`
-      : `<div style="width:40px;height:40px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">🖼</div>`;
-    const isSelected = _addItemState.productId === p.id;
-    return `
-      <div onclick="addItemSelectProduct('${p.id}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);${isSelected ? 'background:#f0f8f0;' : ''}" onmouseover="this.style.background='#e8f5e8';" onmouseout="this.style.background='${isSelected ? '#f0f8f0' : ''}';">
-        ${thumb}
-        <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;color:var(--primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div>
-          <div style="font-size:11px;color:var(--text-muted);">${p.sku || ''} · $${p.price || 0}</div>
-        </div>
-        ${isSelected ? '<span style="color:#2d7a2d;font-size:14px;">✓</span>' : ''}
-      </div>
-    `;
-  }).join('');
+  el.innerHTML = list.map(p => renderPickerCard(p, _addItemState.productId === p.id, 'additem')).join('');
 }
 
 function addItemSelectProduct(pid) {
