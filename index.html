@@ -7345,6 +7345,10 @@ async function syncDownload(showToast = false) {
     loadBundles();
     // 📏 順便拉一下尺寸示意圖
     loadSizeGuides();
+    // 🔄 順便拉線上訂單替換資料
+    loadOrderSwaps();
+    // 🎁 順便拉訂單自訂修改（免運）
+    loadOrderOverrides();
     if (changed) {
       // 重新渲染各畫面
       renderCatBar(); renderProducts(); renderProductsTable();
@@ -11393,9 +11397,13 @@ function renderOrderCard(o) {
     const q = sw ? (sw.qty || it.qty || 1) : (it.qty || 1);
     return s + p * q;
   }, 0);
-  const effectiveTotal = effectiveSubtotal + (o.shippingFee || 0);
+  // ★ v2.9.26 本單免運 override
+  const waiveShip = getOrderWaiveShipping(o.orderNo);
+  const effShippingFee = waiveShip ? 0 : (o.shippingFee || 0);
+  const effectiveTotal = effectiveSubtotal + effShippingFee;
   const hasCancelledItems = cancelledIdxs.length > 0;
   const hasSwapped = Object.keys(swap).length > 0;
+  const hasAdjustment = hasCancelledItems || hasSwapped || waiveShip;
 
   // 配送資訊
   let shippingInfo = escapeHtmlOO(o.shippingLabel || '');
@@ -11429,12 +11437,39 @@ function renderOrderCard(o) {
           ${o.note ? `<strong>備註：</strong><div>${escapeHtmlOO(o.note)}</div>` : ''}
         </div>
         <div class="oo-items">${itemsHtml || '<span style="color:var(--text-muted);">無商品</span>'}</div>
+        ${(() => {
+          if (!hasSwapped) return '';
+          const diff = calcSwapDiff(o);
+          if (diff === 0) return `<div style="margin-top:8px;padding:6px 10px;background:#f8f8f8;border-radius:8px;font-size:11px;color:var(--text-muted);text-align:center;">🔄 已替換（無差額）</div>`;
+          const payStatus = getSwapPayStatus(o.orderNo);
+          const isDone = payStatus === 'done';
+          const isRefund = diff < 0;
+          const label = isRefund ? `我需退 $${(-diff).toLocaleString()} 給客人` : `客人需補 $${diff.toLocaleString()}`;
+          const bg = isDone ? '#dcf2dc' : (isRefund ? '#fff5e6' : '#fee');
+          const borderColor = isDone ? '#2d7a2d' : (isRefund ? '#e8a54b' : '#c0392b');
+          return `
+            <div style="margin-top:8px;padding:8px 10px;background:${bg};border:1px solid ${borderColor};border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <div style="font-size:11px;line-height:1.4;">
+                <strong style="color:${borderColor};">${isDone ? '✓ 已處理' : '⚠ 待處理'}：${label}</strong>
+              </div>
+              <button onclick="toggleSwapPayStatus('${escapeAttrOO(o.orderNo)}')" style="padding:4px 10px;border-radius:12px;border:1px solid ${borderColor};background:${isDone ? '#fff' : borderColor};color:${isDone ? borderColor : '#fff'};font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">${isDone ? '↩ 標為未處理' : '✓ 標為已處理'}</button>
+            </div>
+          `;
+        })()}
+        ${o.shippingFee ? `
+          <div style="margin-top:6px;padding:6px 10px;background:${waiveShip ? '#dcf2dc' : '#fafafa'};border:1px solid ${waiveShip ? '#2d7a2d' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="font-size:11px;color:${waiveShip ? '#2d7a2d' : 'var(--text-muted)'};">
+              ${waiveShip ? `🎁 <strong>本單免運</strong> · 省 $${o.shippingFee}` : `運費 $${o.shippingFee}`}
+            </div>
+            <button onclick="toggleOrderWaiveShipping('${escapeAttrOO(o.orderNo)}')" style="padding:3px 10px;border-radius:12px;border:1px solid ${waiveShip ? '#2d7a2d' : 'var(--gold)'};background:${waiveShip ? '#fff' : 'var(--gold)'};color:${waiveShip ? '#2d7a2d' : '#fff'};font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;">${waiveShip ? '↩ 恢復運費' : '🎁 給免運'}</button>
+          </div>
+        ` : ''}
         <div class="oo-total">
           <div>
             <span class="oo-total-label">應收</span>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${((hasCancelledItems || hasSwapped) ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${o.shippingFee ? ` + 運費 $${o.shippingFee}` : ''}${o.freeShippingApplied ? ' (免運)' : ''}${(hasCancelledItems || hasSwapped) ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()}${hasCancelledItems ? ` · 取消 ${cancelledIdxs.length} 項` : ''}${hasSwapped ? ` · 替換 ${Object.keys(swap).length} 項` : ''})</span>` : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(hasAdjustment ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${o.shippingFee ? (waiveShip ? ` + <span style="color:#2d7a2d;font-weight:700;">免運</span>` : ` + 運費 $${o.shippingFee}`) : ''}${o.freeShippingApplied && !o.shippingFee ? ' (免運)' : ''}${hasAdjustment ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()}${hasCancelledItems ? ` · 取消 ${cancelledIdxs.length} 項` : ''}${hasSwapped ? ` · 替換 ${Object.keys(swap).length} 項` : ''}${waiveShip ? ` · 免運 -$${o.shippingFee || 0}` : ''})</span>` : ''}</div>
           </div>
-          <div class="oo-total-amount"><span class="curr">$</span>${((hasCancelledItems || hasSwapped) ? effectiveTotal : (o.total || 0)).toLocaleString()}</div>
+          <div class="oo-total-amount"><span class="curr">$</span>${(hasAdjustment ? effectiveTotal : (o.total || 0)).toLocaleString()}</div>
         </div>
         <div class="oo-actions">
           ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
@@ -11513,6 +11548,10 @@ const COMMITTED_STATUSES = ['paid', 'shipped', 'completed'];
 let orderCancelledItems = load('pos_order_cancel_items', {});
 // ★ v2.9.24 替換商品：{orderNo: {idx: {productId, name, color, size, price, qty}}}
 let orderSwapItems = load('pos_order_swap_items', {});
+// ★ v2.9.25 補款/退款狀態：{orderNo: 'pending'|'done'|'na'}（雲端同步）
+let orderSwapPayStatus = load('pos_order_swap_pay_status', {});
+// ★ v2.9.26 訂單自訂修改：{orderNo: {waiveShipping: true}}（雲端同步）
+let orderOverrides = load('pos_order_overrides', {});
 
 function getCancelledIdxs(orderNo) {
   return Array.isArray(orderCancelledItems[orderNo]) ? orderCancelledItems[orderNo] : [];
@@ -11530,8 +11569,167 @@ function getSwapMap(orderNo) {
 }
 function setSwapMap(orderNo, map) {
   if (map && Object.keys(map).length) orderSwapItems[orderNo] = map;
-  else delete orderSwapItems[orderNo];
+  else {
+    delete orderSwapItems[orderNo];
+    // ★ v2.9.25 連同補退狀態一起清掉
+    delete orderSwapPayStatus[orderNo];
+    save('pos_order_swap_pay_status', orderSwapPayStatus);
+  }
   save('pos_order_swap_items', orderSwapItems);
+  // ★ v2.9.25 自動上傳雲端（含補退狀態）
+  if (typeof uploadOrderSwap === 'function') uploadOrderSwap(orderNo);
+}
+
+// ★ v2.9.25 補款/退款狀態
+function getSwapPayStatus(orderNo) {
+  return orderSwapPayStatus[orderNo] || 'pending';
+}
+function setSwapPayStatus(orderNo, status) {
+  if (status && status !== 'pending') orderSwapPayStatus[orderNo] = status;
+  else delete orderSwapPayStatus[orderNo];
+  save('pos_order_swap_pay_status', orderSwapPayStatus);
+  if (typeof uploadOrderSwap === 'function') uploadOrderSwap(orderNo);
+}
+
+// 計算替換後總金額差（新小計 - 原小計；排除已取消項）
+function calcSwapDiff(order) {
+  if (!order) return 0;
+  const items = Array.isArray(order.items) ? order.items : [];
+  const cancelled = order.cancelledItemIdxs || getCancelledIdxs(order.orderNo);
+  const swap = order.swapMap || getSwapMap(order.orderNo);
+  let orig = 0, after = 0;
+  items.forEach((it, idx) => {
+    if (cancelled.includes(idx)) return;
+    const sw = swap[idx];
+    if (sw) {
+      orig += (it.price || 0) * (it.qty || 1);
+      after += (sw.price || 0) * (sw.qty || 1);
+    }
+  });
+  return after - orig;
+}
+
+// ★ v2.9.25 上傳單筆訂單的替換資料到 Apps Script
+async function uploadOrderSwap(orderNo) {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl || !orderNo) return;
+  if (window.__isDownloadingSync) return; // 下載中不要反向上傳
+  try {
+    const order = onlineOrders.find(o => o.orderNo === orderNo);
+    const swapMap = getSwapMap(orderNo);
+    const diff = order ? calcSwapDiff(order) : 0;
+    let status = getSwapPayStatus(orderNo);
+    if (diff === 0 && Object.keys(swapMap).length > 0) status = 'na';
+    const payload = {
+      action: 'saveOrderSwap',
+      orderNo: orderNo,
+      swapMap: swapMap,
+      paymentStatus: status,
+    };
+    const res = await fetch(appSettings.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.ok) console.warn('uploadOrderSwap 失敗', data.error);
+  } catch (err) {
+    console.warn('uploadOrderSwap 錯誤', err);
+  }
+}
+
+// ★ v2.9.26 本單免運 getter / setter + 上傳
+function getOrderWaiveShipping(orderNo) {
+  return !!(orderOverrides[orderNo] && orderOverrides[orderNo].waiveShipping);
+}
+function setOrderWaiveShipping(orderNo, waive) {
+  if (waive) {
+    orderOverrides[orderNo] = orderOverrides[orderNo] || {};
+    orderOverrides[orderNo].waiveShipping = true;
+  } else if (orderOverrides[orderNo]) {
+    delete orderOverrides[orderNo].waiveShipping;
+    if (Object.keys(orderOverrides[orderNo]).length === 0) delete orderOverrides[orderNo];
+  }
+  save('pos_order_overrides', orderOverrides);
+  if (typeof uploadOrderWaiveShipping === 'function') uploadOrderWaiveShipping(orderNo, waive);
+}
+async function uploadOrderWaiveShipping(orderNo, waive) {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl || !orderNo) return;
+  if (window.__isDownloadingSync) return;
+  try {
+    const res = await fetch(appSettings.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'saveOrderWaiveShipping', orderNo: orderNo, waive: !!waive }),
+    });
+    const data = await res.json();
+    if (!data.ok) console.warn('uploadOrderWaiveShipping 失敗', data.error);
+  } catch (err) {
+    console.warn('uploadOrderWaiveShipping 錯誤', err);
+  }
+}
+async function loadOrderOverrides() {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  try {
+    const res = await fetch(appSettings.syncUrl + '?action=getOrderOverrides&t=' + Date.now());
+    const data = await res.json();
+    if (!data.ok) return;
+    const waiveMap = (data.overrides && data.overrides.waiveShipping) || {};
+    const next = {};
+    Object.keys(waiveMap).forEach(ono => { next[ono] = { waiveShipping: true }; });
+    orderOverrides = next;
+    save('pos_order_overrides', orderOverrides);
+    if (typeof renderOnlineOrders === 'function') try { renderOnlineOrders(); } catch(e) {}
+  } catch (err) {
+    console.warn('loadOrderOverrides 錯誤', err);
+  }
+}
+
+// 切換本單免運
+function toggleOrderWaiveShipping(orderNo) {
+  const order = onlineOrders.find(o => o.orderNo === orderNo);
+  if (!order) return;
+  const cur = getOrderWaiveShipping(orderNo);
+  const next = !cur;
+  if (next && !order.shippingFee) {
+    toast('此訂單本來就沒有運費', 'warn');
+    return;
+  }
+  setOrderWaiveShipping(orderNo, next);
+  // 已 commit 訂單 → 重建 tx（讓報表金額跟著變）
+  if (isOrderCommitted(orderNo)) {
+    upsertOrderTx(order);
+  }
+  renderOnlineOrders();
+  toast(next ? `🎁 已給本單免運（省 $${order.shippingFee || 0}）` : '↩ 已恢復運費', 'success');
+}
+
+// ★ v2.9.25 從雲端拉取所有訂單的替換資料
+async function loadOrderSwaps() {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  try {
+    const res = await fetch(appSettings.syncUrl + '?action=getOrderSwaps&t=' + Date.now());
+    const data = await res.json();
+    if (!data.ok || !data.swaps) return;
+    const cloudSwaps = data.swaps || {};
+    const newItems = {};
+    const newStatus = {};
+    Object.keys(cloudSwaps).forEach(ono => {
+      const s = cloudSwaps[ono];
+      if (s && s.swapMap && Object.keys(s.swapMap).length > 0) {
+        newItems[ono] = s.swapMap;
+        if (s.paymentStatus && s.paymentStatus !== 'pending') newStatus[ono] = s.paymentStatus;
+      }
+    });
+    orderSwapItems = newItems;
+    orderSwapPayStatus = newStatus;
+    save('pos_order_swap_items', orderSwapItems);
+    save('pos_order_swap_pay_status', orderSwapPayStatus);
+    // 回灌到 onlineOrders
+    (onlineOrders || []).forEach(o => { if (o && o.orderNo) o.swapMap = getSwapMap(o.orderNo); });
+    if (typeof renderOnlineOrders === 'function') try { renderOnlineOrders(); } catch(e) {}
+  } catch (err) {
+    console.warn('loadOrderSwaps 錯誤', err);
+  }
 }
 
 // 把本地取消 + 替換狀態合併回訂單物件（onlineOrders 重新載入時呼叫）
@@ -11673,7 +11871,10 @@ function upsertOrderTx(order) {
   }
 
   const subtotal = effective.reduce((s, x) => s + (x.item.price || 0) * (x.item.qty || 1), 0);
-  const total = subtotal + (order.shippingFee || 0);
+  // ★ v2.9.26 本單免運時運費為 0
+  const waiveShipTx = getOrderWaiveShipping(order.orderNo);
+  const shipFee = waiveShipTx ? 0 : (order.shippingFee || 0);
+  const total = subtotal + shipFee;
   // ★ 會員積分：滿 10 元 1 點（跟店內 POS 一致），只算 subtotal 不含運費
   const pointsEarned = member ? Math.floor(subtotal / 10) : 0;
 
@@ -12071,6 +12272,15 @@ function removeSwap() {
   renderOnlineOrders();
   closeModal('order-swap-modal');
   toast('↩ 已復原替換', 'success');
+}
+
+// ★ v2.9.25 切換補款/退款處理狀態
+function toggleSwapPayStatus(orderNo) {
+  const cur = getSwapPayStatus(orderNo);
+  const next = (cur === 'done') ? 'pending' : 'done';
+  setSwapPayStatus(orderNo, next);
+  renderOnlineOrders();
+  toast(next === 'done' ? '✓ 已標為已處理' : '↩ 已標為未處理', 'success');
 }
 
 async function updateOrderStatusRemote(orderNo, newStatus) {
