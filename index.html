@@ -1112,6 +1112,7 @@
         </div>
         <div class="cart-totals">
           <div class="total-row"><span>小計</span><span class="amount" id="t-sub">$0</span></div>
+          <div class="total-row discount" id="bundle-row" style="display:none;flex-direction:column;align-items:stretch;"><div style="display:flex;justify-content:space-between;align-items:center;"><span>🎁 組合價</span><span class="amount" id="t-bundle">-$0</span></div><div id="bundle-detail" style="font-size:10px;color:var(--text-muted);text-align:right;margin-top:2px;line-height:1.4;"></div></div>
           <div class="total-row discount" id="discount-row" style="display:none;"><span>折扣</span><span class="amount" id="t-disc">-$0</span></div>
           <div class="total-row discount" id="coupon-row" style="display:none;"><span>優惠券</span><span class="amount" id="t-coupon">-$0</span></div>
           <div class="total-row discount" id="member-disc-row" style="display:none;"><span>會員折扣</span><span class="amount" id="t-member-disc">-$0</span></div>
@@ -2296,6 +2297,8 @@
         <button type="button" data-mgmt-tab="tags" onclick="mgmtSwitchTab('tags')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🏷 標籤</button>
         <button type="button" data-mgmt-tab="cats" onclick="mgmtSwitchTab('cats')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🗂 分類</button>
         <button type="button" data-mgmt-tab="colors" onclick="mgmtSwitchTab('colors')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🎨 商品顏色</button>
+        <button type="button" data-mgmt-tab="bundles" onclick="mgmtSwitchTab('bundles')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">🎁 組合價</button>
+        <button type="button" data-mgmt-tab="guides" onclick="mgmtSwitchTab('guides')" class="mgmt-tab-btn" style="flex:1;padding:12px 8px;border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text-soft);cursor:pointer;border-bottom:3px solid transparent;transition:.15s;">📏 尺寸示意圖</button>
       </div>
 
       <!-- Tab 1: 標籤 -->
@@ -2338,6 +2341,31 @@
           <button class="btn btn-primary" onclick="cpaSave()" id="cpa-save-btn">💾 儲存色卡</button>
         </div>
       </div>
+
+      <!-- Tab 4: 組合價 (v2.9.20) -->
+      <div id="mgmt-pane-bundles" class="mgmt-pane" style="display:none;padding:16px;max-height:calc(70vh - 60px);overflow-y:auto;">
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid #D49768;padding:8px 12px;border-radius:4px;">
+          💡 <strong>指定組合價</strong>：A + B 一起買打包價。<br>
+          POS 結帳 + 官網訂單都會自動偵測並套用，顯示省多少。
+        </div>
+        <div id="bundles-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="bundleAddNew()" style="margin-top:12px;width:100%;color:#D49768;border-color:#D49768;">＋ 新增組合</button>
+        <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+          <button class="btn btn-primary" onclick="bundlesSave()" id="bundles-save-btn">💾 儲存組合價</button>
+        </div>
+      </div>
+
+      <!-- Tab 5: 尺寸示意圖 (v2.9.23) -->
+      <div id="mgmt-pane-guides" class="mgmt-pane" style="display:none;padding:16px;max-height:calc(70vh - 60px);overflow-y:auto;">
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.7;margin-bottom:12px;background:#faf7f2;border-left:3px solid #7BA482;padding:8px 12px;border-radius:4px;">
+          💡 <strong>尺寸示意圖</strong>：每個商品類型貼一張 URL（Cloudinary 或任何網址），官網詳情頁會依商品類型自動顯示對應的示意圖。<br>
+          🎯 範例：褲子商品 → 自動顯示褲子的示意圖。
+        </div>
+        <div id="size-guides-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+        <div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+          <button class="btn btn-primary" onclick="guidesSave()" id="guides-save-btn">💾 儲存尺寸示意圖</button>
+        </div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('mgmt-center-modal')">關閉</button>
@@ -2347,6 +2375,50 @@
 
 
 <!-- 🎨 從照片取色 modal（v2.9.9） -->
+<!-- 🔄 線上訂單替換商品 modal (v2.9.24) -->
+<div class="modal-overlay" id="order-swap-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3>🔄 替換商品</h3>
+      <button class="modal-close" onclick="closeModal('order-swap-modal')">×</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <div style="padding:10px 12px;background:#fff3e0;border-left:3px solid #D49768;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.7;color:#8B6F47;">
+        💡 挑選要替換成的新商品 + 規格 + 數量，訂單金額會自動更新為新價錢。<br>
+        🎯 替換後需 LINE 跟客人收/退差額。
+      </div>
+      <!-- 原商品資訊 -->
+      <div id="swap-original" style="padding:10px 12px;background:#f5f5f5;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+      <!-- 商品搜尋 -->
+      <div style="margin-bottom:10px;">
+        <input type="text" id="swap-search" placeholder="🔍 搜尋商品名稱 / 款號" oninput="swapFilterProducts()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+      </div>
+      <div id="swap-product-list" style="max-height:35vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#faf7f2;"></div>
+      <!-- 選定商品後的規格選擇 -->
+      <div id="swap-variant-section" style="display:none;margin-top:12px;padding:12px;background:#fffbf0;border:1px solid var(--gold);border-radius:8px;">
+        <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:8px;" id="swap-selected-name"></div>
+        <div id="swap-color-section" style="margin-bottom:8px;"></div>
+        <div id="swap-size-section" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <label style="font-size:12px;color:var(--text-muted);">數量</label>
+          <button type="button" onclick="swapChangeQty(-1)" style="width:28px;height:28px;border:1px solid var(--border);background:#fff;border-radius:5px;cursor:pointer;">−</button>
+          <span id="swap-qty-display" style="min-width:30px;text-align:center;font-weight:700;">1</span>
+          <button type="button" onclick="swapChangeQty(1)" style="width:28px;height:28px;border:1px solid var(--border);background:#fff;border-radius:5px;cursor:pointer;">+</button>
+          <span style="font-size:12px;color:var(--text-muted);margin-left:auto;">單價</span>
+          <input type="number" id="swap-price" value="0" min="0" style="width:80px;padding:5px 8px;border:1px solid var(--gold);border-radius:5px;font-size:13px;font-weight:700;color:var(--gold);text-align:right;">
+        </div>
+        <div id="swap-diff-preview" style="margin-top:10px;padding:8px 12px;background:#fff;border-radius:6px;font-size:13px;text-align:center;"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('order-swap-modal')">取消</button>
+      ${0}<!-- 動態加按鈕 -->
+      <button class="btn btn-outline" id="swap-remove-btn" onclick="removeSwap()" style="display:none;color:var(--danger);border-color:var(--danger);">↩ 復原替換</button>
+      <button class="btn btn-primary" onclick="confirmSwap()" id="swap-confirm-btn" disabled>🔄 確認替換</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="color-picker-modal">
   <div class="modal" style="max-width:640px;">
     <div class="modal-head">
@@ -2515,6 +2587,7 @@ const MEASURE_FIELDS = [
   { key: 'bust',        label: '胸圍', icon: '💠', groups: ['top', 'dress', 'custom'] },
   { key: 'waist',       label: '腰圍', icon: '⌛', groups: ['pants', 'skirt', 'dress', 'custom'] },
   { key: 'hip',         label: '臀圍', icon: '🍑', groups: ['pants', 'skirt', 'dress', 'custom'] },
+  { key: 'rise',        label: '褲檔', icon: '📐', groups: ['pants', 'custom'] },
   { key: 'topLength',   label: '衣長', icon: '📐', groups: ['top', 'custom'] },
   { key: 'sleeveLength',label: '袖長', icon: '🫳', groups: ['top', 'dress', 'custom'] },
   { key: 'pantsLength', label: '褲長', icon: '📏', groups: ['pants', 'custom'] },
@@ -2524,7 +2597,7 @@ const MEASURE_FIELDS = [
 const MEASURE_PRESETS = [
   { code: '',       label: '— 不顯示 —' },
   { code: 'top',    label: '👕 上衣（肩寬/胸圍/袖長/衣長）' },
-  { code: 'pants',  label: '👖 褲子（腰圍/臀圍/褲長）' },
+  { code: 'pants',  label: '👖 褲子（腰圍/臀圍/褲檔/褲長）' },
   { code: 'skirt',  label: '👗 裙子（腰圍/臀圍/裙長）' },
   { code: 'dress',  label: '👚 洋裝/連身（全部欄位）' },
   { code: 'custom', label: '🛠 自訂（手動選擇欄位）' },
@@ -3065,6 +3138,25 @@ function renderCart() {
 
 function calcTotals() {
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  // ★ v2.9.20 偵測購物車可套用的組合價
+  const bundleHits = (typeof detectBundlesInCart === 'function') ? detectBundlesInCart(cart) : [];
+  const bundleDisc = bundleHits.reduce((s, h) => s + h.savings, 0);
+  // 顯示組合價行
+  const bundleRow = document.getElementById('bundle-row');
+  const bundleText = document.getElementById('t-bundle');
+  const bundleDetail = document.getElementById('bundle-detail');
+  if (bundleRow && bundleText) {
+    if (bundleDisc > 0) {
+      bundleRow.style.display = 'flex';
+      bundleText.textContent = '-' + fmt(bundleDisc);
+      if (bundleDetail) {
+        bundleDetail.innerHTML = bundleHits.map(h => `🎁 ${escapeHtml(h.bundle.name)}${h.times > 1 ? ' ×' + h.times : ''}（省 $${h.savings}）`).join('<br>');
+      }
+    } else {
+      bundleRow.style.display = 'none';
+      if (bundleDetail) bundleDetail.innerHTML = '';
+    }
+  }
   const discType = document.getElementById('disc-type').value;
   const discVal = parseFloat(document.getElementById('disc-val').value) || 0;
   let manualDisc = 0;
@@ -3093,7 +3185,7 @@ function calcTotals() {
     if (tier === 'VIP') memberDisc = Math.round(subtotal * 0.1);
   }
 
-  const total = Math.max(0, subtotal - manualDisc - couponDisc - memberDisc);
+  const total = Math.max(0, subtotal - bundleDisc - manualDisc - couponDisc - memberDisc);
   document.getElementById('t-sub').textContent = fmt(subtotal);
   document.getElementById('t-disc').textContent = '-' + fmt(manualDisc);
   document.getElementById('discount-row').style.display = manualDisc > 0 ? 'flex' : 'none';
@@ -3314,6 +3406,9 @@ function applyCoupon() {
 function doCheckout() {
   if (!cart.length) return;
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  // ★ v2.9.20 組合價折扣（跟 calcTotals 一致）
+  const bundleHits = (typeof detectBundlesInCart === 'function') ? detectBundlesInCart(cart) : [];
+  const bundleDisc = bundleHits.reduce((s, h) => s + h.savings, 0);
   const discType = document.getElementById('disc-type').value;
   const discVal = parseFloat(document.getElementById('disc-val').value) || 0;
   let manualDisc = 0;
@@ -3330,7 +3425,7 @@ function doCheckout() {
     if (tier === '金卡') memberDisc = Math.round(subtotal * 0.05);
     if (tier === 'VIP') memberDisc = Math.round(subtotal * 0.1);
   }
-  const total = Math.max(0, subtotal - manualDisc - couponDisc - memberDisc);
+  const total = Math.max(0, subtotal - bundleDisc - manualDisc - couponDisc - memberDisc);
 
   // 現金付款檢查收款是否足夠
   if (payMethod === 'cash') {
@@ -3399,6 +3494,7 @@ function doCheckout() {
       };
     }),
     subtotal, discount: manualDisc, couponDiscount: couponDisc, memberDiscount: memberDisc, total, payMethod,
+    bundleDiscount: bundleDisc, bundles: bundleHits.map(h => ({ id: h.bundle.id, name: h.bundle.name, times: h.times, savings: h.savings })), // ★ v2.9.20
     pointsEarned,
     note: document.getElementById('order-note').value.trim(),
     cashReceived, change,
@@ -4119,6 +4215,10 @@ let pmStockMap = {}; // key = "color|size"
 // 蒐集所有現有的候選項
 // ★ v2.9.10 分類順序（POS + 官網共用；localStorage 存本地備份，透過 Apps Script 同步）
 let PM_CAT_ORDER = load('pos_cat_order', []);
+// ★ v2.9.20 商品組合價 [{ id, name, productIds, price, enabled }]
+let PM_BUNDLES = load('pos_bundles', []);
+// ★ v2.9.23 尺寸示意圖 { type → imageUrl }
+let PM_SIZE_GUIDES = load('pos_size_guides', {});
 function getAllCats() {
   const derived = [...new Set(products.map(p => p.cat).filter(Boolean))];
   const ordered = [];
@@ -4774,6 +4874,21 @@ async function loadCatOrder() {
   } catch (e) { /* 靜默失敗、用 localStorage 或預設順序 */ }
 }
 
+// ★ v2.9.20 從雲端讀取組合價
+async function loadBundles() {
+  if (!appSettings.syncUrl) return;
+  try {
+    const res = await fetchWithTimeout(appSettings.syncUrl + '?action=getBundles&_t=' + Date.now(), {}, 15000);
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.bundles)) {
+      PM_BUNDLES = data.bundles;
+      save('pos_bundles', PM_BUNDLES);
+      // 購物車若有商品 → 重算金額（可能有 bundle 剛生效）
+      if (typeof calcTotals === 'function') { try { calcTotals(); } catch(e) {} }
+    }
+  } catch (e) { /* 靜默失敗 */ }
+}
+
 // ============================================================
 // ⚙️ 管理中心（v2.9.11 三合一：標籤 + 分類 + 商品顏色）
 // ============================================================
@@ -4797,18 +4912,33 @@ function openManagementCenter(tab) {
   }));
   // 3. 商品顏色：從所有商品彙總 + 讀本地色卡
   _cpaEditing = buildColorPaletteFromProducts();
+  // 4. 組合價：從 PM_BUNDLES 複製一份到暫存
+  _bundlesEditing = PM_BUNDLES.map(b => ({
+    id: b.id,
+    name: b.name,
+    productIds: Array.isArray(b.productIds) ? [...b.productIds] : [],
+    price: b.price,
+    enabled: b.enabled !== false,
+    startDate: b.startDate || '',
+    endDate: b.endDate || '',
+    weekdays: Array.isArray(b.weekdays) ? [...b.weekdays] : [],
+  }));
+  // 5. 尺寸示意圖：複製 PM_SIZE_GUIDES
+  _guidesEditing = { ...(PM_SIZE_GUIDES || {}) };
 
   // 全部渲染
   renderTagColorList();
   renderCmList();
   renderColorPaletteList();
+  renderBundlesList();
+  renderSizeGuidesList();
   openModal('mgmt-center-modal');
   mgmtSwitchTab(startTab);
 }
 
 // 切換 tab
 function mgmtSwitchTab(tab) {
-  const tabs = ['tags', 'cats', 'colors'];
+  const tabs = ['tags', 'cats', 'colors', 'bundles', 'guides'];
   tabs.forEach(t => {
     const pane = document.getElementById('mgmt-pane-' + t);
     if (pane) pane.style.display = (t === tab) ? '' : 'none';
@@ -4973,6 +5103,412 @@ async function cpaApplyToAll() {
   // 觸發雲端同步（商品資料變了）
   if (typeof scheduleAutoSync === 'function') scheduleAutoSync();
   else if (typeof syncUpload === 'function') syncUpload();
+}
+
+// ============================================================
+// 🎁 商品組合價管理（v2.9.20）
+// ============================================================
+let _bundlesEditing = [];
+
+function renderBundlesList() {
+  const el = document.getElementById('bundles-list');
+  if (!el) return;
+  if (_bundlesEditing.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;background:#faf7f2;border-radius:8px;">尚無組合價<br><span style="font-size:11px;">點下方「＋ 新增組合」開始，選要組合的商品 + 設定組合價</span></div>';
+    return;
+  }
+  el.innerHTML = _bundlesEditing.map((b, i) => {
+    const selectedProductsHtml = b.productIds.map(pid => {
+      const p = products.find(x => x.id === pid);
+      const name = p ? p.name : '（已刪除商品）';
+      const price = p ? p.price : 0;
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#fff;border:1px solid var(--border);border-radius:12px;font-size:12px;margin:2px;">
+        ${escapeHtml(name)} <span style="color:var(--text-muted);font-size:11px;">$${price}</span>
+        <button type="button" onclick="bundleRemoveProduct(${i},'${pid}')" style="background:transparent;border:none;color:var(--danger);cursor:pointer;padding:0 2px;font-size:14px;line-height:1;">×</button>
+      </span>`;
+    }).join('');
+    const origTotal = b.productIds.reduce((sum, pid) => {
+      const p = products.find(x => x.id === pid);
+      return sum + (p?.price || 0);
+    }, 0);
+    const savings = Math.max(0, origTotal - (b.price || 0));
+    return `
+      <div style="padding:12px;background:${b.enabled ? '#fffbf0' : '#f5f5f5'};border:1px solid ${b.enabled ? '#D49768' : 'var(--border)'};border-radius:10px;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <input type="text" value="${escapeAttr(b.name || '')}" oninput="bundleUpdate(${i},'name',this.value)" maxlength="20" placeholder="組合名稱（例：套裝 A）" style="flex:1;min-width:120px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;color:${b.enabled ? '#D49768' : 'var(--text-muted)'};">
+            <input type="checkbox" ${b.enabled ? 'checked' : ''} onchange="bundleUpdate(${i},'enabled',this.checked)" style="accent-color:#D49768;"> 啟用
+          </label>
+          <button type="button" onclick="bundleRemove(${i})" title="刪除此組合" style="background:transparent;border:1px solid var(--danger);color:var(--danger);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑️</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">組合商品（至少 2 件）</div>
+        <div style="min-height:36px;padding:6px;background:${b.productIds.length < 2 ? '#fee' : '#faf7f2'};border:1px dashed var(--border);border-radius:6px;margin-bottom:8px;">
+          ${b.productIds.length === 0 ? '<span style="color:var(--text-muted);font-size:12px;padding:4px;">尚未選擇商品</span>' : selectedProductsHtml}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <button type="button" onclick="bundleOpenProductPicker(${i})" style="padding:6px 12px;background:#8B6F47;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">＋ 選商品</button>
+          <span style="font-size:11px;color:var(--text-muted);">${b.productIds.length} 件已選</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;padding:8px 10px;background:#fff;border-radius:6px;border:1px solid var(--border);margin-bottom:8px;">
+          <span style="font-size:12px;color:var(--text-muted);">原價總和：<s>$${origTotal}</s></span>
+          <span style="font-size:12px;color:var(--text-muted);">組合價：</span>
+          <input type="number" min="0" value="${b.price || ''}" oninput="bundleUpdate(${i},'price',this.value)" placeholder="組合價" style="flex:1;max-width:100px;padding:6px 8px;border:1px solid var(--gold);border-radius:6px;font-size:14px;font-weight:800;color:#D49768;text-align:right;">
+          ${savings > 0 ? `<span style="font-size:12px;color:#2d7a2d;font-weight:700;">省 $${savings}</span>` : ''}
+        </div>
+        ${renderBundleSchedule(i, b)}
+      </div>
+    `;
+  }).join('');
+}
+
+// ★ v2.9.21 排程設定（日期區間 + 星期幾）
+function renderBundleSchedule(i, b) {
+  const hasSchedule = !!(b.startDate || b.endDate || (b.weekdays && b.weekdays.length > 0));
+  const weekdayLabels = ['日','一','二','三','四','五','六'];
+  const activeWd = Array.isArray(b.weekdays) ? b.weekdays : [];
+  // 當下是否生效的狀態顯示
+  const liveStatus = isBundleActiveNow(b);
+  const statusBadge = b.enabled === false
+    ? '<span style="padding:2px 8px;border-radius:9px;background:#eee;color:#888;font-size:11px;font-weight:700;">⏸ 停用</span>'
+    : liveStatus
+      ? '<span style="padding:2px 8px;border-radius:9px;background:#dcf2dc;color:#2d7a2d;font-size:11px;font-weight:700;">✓ 現在生效</span>'
+      : '<span style="padding:2px 8px;border-radius:9px;background:#fef3e0;color:#a04000;font-size:11px;font-weight:700;">⏰ 時間外</span>';
+  return `
+    <details ${hasSchedule ? 'open' : ''} style="margin-top:4px;">
+      <summary style="cursor:pointer;padding:6px 10px;background:#f5ede0;border-radius:6px;font-size:12px;font-weight:600;color:#8B6F47;list-style:none;display:flex;align-items:center;gap:8px;">
+        <span>⏰ 排程設定</span>
+        ${statusBadge}
+        ${!hasSchedule ? '<span style="font-size:10px;color:var(--text-muted);font-weight:400;">（不設 = 永遠生效）</span>' : ''}
+      </summary>
+      <div style="padding:10px;background:#fff;border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;margin-top:-2px;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+          <span style="font-size:12px;color:var(--text-muted);min-width:52px;">生效期間</span>
+          <input type="date" value="${b.startDate || ''}" onchange="bundleUpdate(${i},'startDate',this.value);renderBundlesList();" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;">
+          <span style="font-size:12px;color:var(--text-muted);">→</span>
+          <input type="date" value="${b.endDate || ''}" onchange="bundleUpdate(${i},'endDate',this.value);renderBundlesList();" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;">
+          ${(b.startDate || b.endDate) ? `<button type="button" onclick="bundleClearDates(${i})" style="background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:11px;text-decoration:underline;">清除日期</button>` : ''}
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:12px;color:var(--text-muted);min-width:52px;">星期幾</span>
+          ${weekdayLabels.map((lbl, wd) => {
+            const on = activeWd.includes(wd);
+            return `<button type="button" onclick="bundleToggleWeekday(${i},${wd})" style="padding:5px 10px;border-radius:14px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid #D49768;background:${on ? '#D49768' : '#fff'};color:${on ? '#fff' : '#D49768'};">${lbl}</button>`;
+          }).join('')}
+          ${activeWd.length === 0 ? '<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">（不選 = 每天）</span>' : `<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">只在選中的星期生效</span>`}
+        </div>
+      </div>
+    </details>
+  `;
+}
+
+function bundleClearDates(i) {
+  if (!_bundlesEditing[i]) return;
+  _bundlesEditing[i].startDate = '';
+  _bundlesEditing[i].endDate = '';
+  renderBundlesList();
+}
+
+function bundleToggleWeekday(i, wd) {
+  if (!_bundlesEditing[i]) return;
+  const arr = _bundlesEditing[i].weekdays || [];
+  const pos = arr.indexOf(wd);
+  if (pos >= 0) arr.splice(pos, 1);
+  else { arr.push(wd); arr.sort((a,b)=>a-b); }
+  _bundlesEditing[i].weekdays = arr;
+  renderBundlesList();
+}
+
+// ★ v2.9.21 判斷 bundle 當下有效（供 UI 狀態 + 購物車判斷共用）
+function isBundleActiveNow(b, now) {
+  if (!b || b.enabled === false) return false;
+  const d = now instanceof Date ? now : new Date();
+  // 日期區間
+  const todayStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  if (b.startDate && todayStr < b.startDate) return false;
+  if (b.endDate && todayStr > b.endDate) return false;
+  // 星期幾
+  if (Array.isArray(b.weekdays) && b.weekdays.length > 0) {
+    if (!b.weekdays.includes(d.getDay())) return false;
+  }
+  return true;
+}
+
+function bundleAddNew() {
+  _bundlesEditing.push({
+    id: 'bundle_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+    name: '',
+    productIds: [],
+    price: 0,
+    enabled: true,
+    startDate: '',
+    endDate: '',
+    weekdays: [],
+  });
+  renderBundlesList();
+}
+
+function bundleUpdate(idx, field, val) {
+  if (!_bundlesEditing[idx]) return;
+  if (field === 'price') {
+    _bundlesEditing[idx][field] = parseInt(val) || 0;
+  } else if (field === 'enabled') {
+    _bundlesEditing[idx][field] = !!val;
+  } else {
+    _bundlesEditing[idx][field] = val;
+  }
+  // name/price 不 re-render（保持焦點），enabled 要重繪顏色
+  if (field === 'enabled') renderBundlesList();
+}
+
+function bundleRemove(idx) {
+  if (!confirm('刪除此組合？')) return;
+  _bundlesEditing.splice(idx, 1);
+  renderBundlesList();
+}
+
+function bundleRemoveProduct(idx, pid) {
+  if (!_bundlesEditing[idx]) return;
+  _bundlesEditing[idx].productIds = _bundlesEditing[idx].productIds.filter(p => p !== pid);
+  renderBundlesList();
+}
+
+// 開啟商品選擇器 picker（用 prompt + 搜尋，簡單版 MVP）
+function bundleOpenProductPicker(idx) {
+  const bundle = _bundlesEditing[idx];
+  if (!bundle) return;
+  // 排除已選商品
+  const avail = products.filter(p => !bundle.productIds.includes(p.id));
+  if (avail.length === 0) {
+    toast('所有商品都已加入', 'warn');
+    return;
+  }
+  // 建立 picker modal
+  const existing = document.getElementById('bundle-picker-modal');
+  if (existing) existing.remove();
+  const html = `
+    <div id="bundle-picker-modal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.remove();">
+      <div style="background:#fff;border-radius:12px;max-width:460px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+          <strong style="flex:1;">選要加入組合的商品</strong>
+          <button type="button" onclick="document.getElementById('bundle-picker-modal').remove()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">×</button>
+        </div>
+        <input type="text" id="bundle-picker-search" placeholder="🔍 搜尋商品名稱/款號" oninput="bundlePickerFilter()" style="margin:12px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+        <div id="bundle-picker-list" style="flex:1;overflow-y:auto;padding:0 12px 12px;"></div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+  window._bundlePickerFor = idx;
+  bundlePickerFilter();
+}
+
+function bundlePickerFilter() {
+  const idx = window._bundlePickerFor;
+  const bundle = _bundlesEditing[idx];
+  if (!bundle) return;
+  const q = (document.getElementById('bundle-picker-search')?.value || '').trim().toLowerCase();
+  const avail = products.filter(p => {
+    if (bundle.productIds.includes(p.id)) return false;
+    if (!q) return true;
+    return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
+  }).slice(0, 100);
+  const el = document.getElementById('bundle-picker-list');
+  if (!el) return;
+  if (avail.length === 0) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">找不到商品</div>';
+    return;
+  }
+  el.innerHTML = avail.map(p => {
+    const mainImg = (p.images && p.images.length) ? p.images[0] : (p.image || '');
+    const thumb = mainImg
+      ? `<div style="width:40px;height:40px;border-radius:6px;background:url('${mainImg.replace(/'/g,"\\'")}') center/cover;flex-shrink:0;"></div>`
+      : `<div style="width:40px;height:40px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">🖼</div>`;
+    return `
+      <div onclick="bundlePickerAdd('${p.id}')" style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;border-radius:6px;border:1px solid transparent;" onmouseover="this.style.background='#faf7f2';this.style.borderColor='var(--gold)';" onmouseout="this.style.background='';this.style.borderColor='transparent';">
+        ${thumb}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${p.sku || ''} · $${p.price || 0}</div>
+        </div>
+        <div style="color:var(--gold);font-size:16px;">＋</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function bundlePickerAdd(pid) {
+  const idx = window._bundlePickerFor;
+  const bundle = _bundlesEditing[idx];
+  if (!bundle) return;
+  if (!bundle.productIds.includes(pid)) bundle.productIds.push(pid);
+  renderBundlesList();
+  bundlePickerFilter(); // 重繪 picker 清單 (剔除剛加入的)
+}
+
+async function bundlesSave() {
+  // 驗證：每個 bundle 至少 2 件商品、價格 > 0
+  const invalid = _bundlesEditing.filter(b => (b.productIds || []).length < 2 || !b.price || b.price <= 0);
+  if (invalid.length > 0) {
+    if (!confirm(`有 ${invalid.length} 組不符合條件（至少 2 件 + 價格 > 0），儲存會自動略過。繼續？`)) return;
+  }
+  // 過濾有效的
+  const valid = _bundlesEditing
+    .filter(b => (b.productIds || []).length >= 2 && b.price > 0)
+    .map(b => ({
+      id: b.id,
+      name: (b.name || '組合').trim().slice(0, 20),
+      productIds: b.productIds,
+      price: parseInt(b.price) || 0,
+      enabled: b.enabled !== false,
+      startDate: b.startDate || '',
+      endDate: b.endDate || '',
+      weekdays: Array.isArray(b.weekdays) ? b.weekdays : [],
+    }));
+
+  const btn = document.getElementById('bundles-save-btn');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 儲存中…'; }
+
+  PM_BUNDLES = valid;
+  save('pos_bundles', PM_BUNDLES);
+
+  // 同步到雲端
+  let cloudErr = '';
+  if (appSettings.syncUrl) {
+    try {
+      const res = await fetchWithTimeout(appSettings.syncUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'saveBundles', bundles: valid }),
+      }, 15000);
+      const data = await res.json();
+      if (!data.ok) cloudErr = data.error || '未知錯誤';
+    } catch (e) {
+      cloudErr = e.message || String(e);
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  // 購物車如果有商品 → 重算（可能有組合剛新增）
+  if (typeof calcTotals === 'function') try { calcTotals(); } catch(e) {}
+
+  if (!appSettings.syncUrl) toast(`✅ 本地已儲存 ${valid.length} 組（未設定雲端）`, 'success');
+  else if (!cloudErr) toast(`✅ 已儲存並同步 ${valid.length} 組`, 'success');
+  else toast(`⚠️ 本地已存，雲端同步失敗：${cloudErr}`, 'warn');
+}
+
+// ============================================================
+// 📏 尺寸示意圖管理（v2.9.23）
+// ============================================================
+let _guidesEditing = {};
+
+function renderSizeGuidesList() {
+  const el = document.getElementById('size-guides-list');
+  if (!el) return;
+  // 用 MEASURE_PRESETS 的 code（除了 '' 和 'custom'）展開
+  const types = [
+    { code: 'top',   label: '👕 上衣' },
+    { code: 'pants', label: '👖 褲子' },
+    { code: 'skirt', label: '👗 裙子' },
+    { code: 'dress', label: '👚 洋裝/連身' },
+  ];
+  el.innerHTML = types.map(t => {
+    const url = _guidesEditing[t.code] || '';
+    const preview = url
+      ? `<img src="${escapeAttr ? escapeAttr(url) : url}" alt="示意圖" style="max-width:100%;max-height:180px;border:1px solid var(--border);border-radius:6px;margin-top:6px;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"><div style="display:none;font-size:11px;color:var(--danger);margin-top:6px;">⚠️ 圖片載入失敗，請檢查 URL</div>`
+      : '';
+    return `
+      <div style="padding:10px;background:#faf7f2;border:1px solid var(--border);border-radius:8px;">
+        <div style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:6px;">${t.label}</div>
+        <input type="url" value="${escapeAttr ? escapeAttr(url) : url}" placeholder="https://res.cloudinary.com/.../image.jpg" oninput="guideUpdate('${t.code}', this.value)" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:monospace;">
+        ${preview}
+      </div>
+    `;
+  }).join('');
+}
+
+function guideUpdate(type, url) {
+  const trimmed = (url || '').trim();
+  if (trimmed) _guidesEditing[type] = trimmed;
+  else delete _guidesEditing[type];
+  // 不 re-render — 保持焦點，但 preview 不即時刷新。使用者 blur 時可以再手動刷新。
+}
+
+async function guidesSave() {
+  const btn = document.getElementById('guides-save-btn');
+  const originalText = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 儲存中…'; }
+
+  PM_SIZE_GUIDES = { ..._guidesEditing };
+  save('pos_size_guides', PM_SIZE_GUIDES);
+
+  let cloudErr = '';
+  if (appSettings.syncUrl) {
+    try {
+      const res = await fetchWithTimeout(appSettings.syncUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'saveSizeGuides', guides: PM_SIZE_GUIDES }),
+      }, 15000);
+      const data = await res.json();
+      if (!data.ok) cloudErr = data.error || '未知錯誤';
+    } catch (e) {
+      cloudErr = e.message || String(e);
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  renderSizeGuidesList(); // 刷新 preview
+  if (!appSettings.syncUrl) toast(`✅ 本地已儲存（未設定雲端）`, 'success');
+  else if (!cloudErr) toast(`✅ 已儲存並同步`, 'success');
+  else toast(`⚠️ 本地已存，雲端同步失敗：${cloudErr}`, 'warn');
+}
+
+// 從雲端讀取尺寸示意圖
+async function loadSizeGuides() {
+  if (!appSettings.syncUrl) return;
+  try {
+    const res = await fetchWithTimeout(appSettings.syncUrl + '?action=getSizeGuides&_t=' + Date.now(), {}, 15000);
+    const data = await res.json();
+    if (data.ok && data.guides && typeof data.guides === 'object') {
+      PM_SIZE_GUIDES = data.guides;
+      save('pos_size_guides', PM_SIZE_GUIDES);
+    }
+  } catch (e) { /* 靜默失敗 */ }
+}
+
+// ★ 判斷購物車目前可以套用哪些組合 → 回傳 [{bundle, times, savings}]
+function detectBundlesInCart(cartItems) {
+  if (!Array.isArray(PM_BUNDLES) || PM_BUNDLES.length === 0) return [];
+  if (!Array.isArray(cartItems) || cartItems.length === 0) return [];
+  // 統計購物車每個 productId 的總數量
+  const counts = {};
+  cartItems.forEach(i => {
+    if (!i.productId || i.isConsign) return; // 寄賣商品不套用
+    counts[i.productId] = (counts[i.productId] || 0) + (i.qty || 1);
+  });
+  const results = [];
+  const used = {}; // 已被某組合「用掉」的數量，避免同件商品被兩個組合都用（簡單 greedy）
+  PM_BUNDLES.forEach(b => {
+    // ★ v2.9.21 排程判斷：enabled + 日期區間 + 星期幾
+    if (typeof isBundleActiveNow === 'function' && !isBundleActiveNow(b)) return;
+    if (!Array.isArray(b.productIds) || b.productIds.length < 2) return;
+    // 可套幾組 = 每件商品剩餘數量的最小值
+    const avail = b.productIds.map(pid => (counts[pid] || 0) - (used[pid] || 0));
+    const times = Math.min(...avail);
+    if (times <= 0) return;
+    // 原價總和（每組）
+    const origTotal = b.productIds.reduce((s, pid) => {
+      const item = cartItems.find(i => i.productId === pid);
+      return s + (item?.price || 0);
+    }, 0);
+    const savings = Math.max(0, origTotal - b.price) * times;
+    if (savings <= 0) return;
+    results.push({ bundle: b, times, savings });
+    // 記錄用掉的
+    b.productIds.forEach(pid => { used[pid] = (used[pid] || 0) + times; });
+  });
+  return results;
 }
 
 // 取得 palette 中某個色名的預設 hex（給編輯商品時 auto-fill 用）
@@ -6805,6 +7341,10 @@ async function syncDownload(showToast = false) {
     loadTagColors();
     // 🗂 順便拉一下分類順序（不阻塞主流程）
     loadCatOrder();
+    // 🎁 順便拉一下組合價
+    loadBundles();
+    // 📏 順便拉一下尺寸示意圖
+    loadSizeGuides();
     if (changed) {
       // 重新渲染各畫面
       renderCatBar(); renderProducts(); renderProductsTable();
@@ -10824,24 +11364,38 @@ function renderOrderCard(o) {
   // 商品清單
   const items = Array.isArray(o.items) ? o.items : [];
   const cancelledIdxs = o.cancelledItemIdxs || getCancelledIdxs(o.orderNo);
+  const swap = o.swapMap || getSwapMap(o.orderNo); // ★ v2.9.24
   const cancelable = o.status !== 'cancelled' && o.status !== 'completed'; // 已完成/已取消訂單不能再動品項
   const itemsHtml = items.slice(0, 6).map((i, idx) => {
     const isCancelled = cancelledIdxs.includes(idx);
+    const swapped = swap[idx];
+    const effName = swapped ? swapped.name : i.name;
+    const effColor = swapped ? swapped.color : i.color;
+    const effSize = swapped ? swapped.size : i.size;
+    const effPrice = swapped ? swapped.price : i.price;
+    const effQty = swapped ? (swapped.qty || i.qty || 1) : (i.qty || 1);
     const rowStyle = isCancelled ? 'opacity:0.5;text-decoration:line-through;' : '';
-    const btn = cancelable ? `<button class="oo-item-cancel-btn" onclick="toggleCancelOrderItem('${escapeAttrOO(o.orderNo)}', ${idx})" title="${isCancelled?'恢復此項':'取消此項'}" style="background:none;border:1px solid ${isCancelled?'var(--success)':'#ddd'};color:${isCancelled?'var(--success)':'#999'};border-radius:6px;width:26px;height:26px;font-size:12px;cursor:pointer;margin-left:6px;line-height:1;">${isCancelled?'↩':'✕'}</button>` : '';
-    return `<div class="oo-item-row" style="${rowStyle}display:flex;align-items:center;">
-      <span class="oo-item-name" style="flex:1;">${escapeHtmlOO(i.name || '')} × ${i.qty || 1}<br><span style="font-size:10px;color:var(--text-muted);">${escapeHtmlOO(i.color || '')}/${escapeHtmlOO(i.size || '')}</span></span>
-      <span class="oo-item-price">$${((i.price || 0) * (i.qty || 1)).toLocaleString()}</span>
-      ${btn}
+    const swapIndicator = swapped ? `<div style="font-size:10px;color:#2d7a2d;margin-top:2px;">🔄 已替換（原 ${escapeHtmlOO(i.name || '')} $${i.price || 0}）</div>` : '';
+    const cancelBtn = cancelable ? `<button class="oo-item-cancel-btn" onclick="toggleCancelOrderItem('${escapeAttrOO(o.orderNo)}', ${idx})" title="${isCancelled?'恢復此項':'取消此項'}" style="background:none;border:1px solid ${isCancelled?'var(--success)':'#ddd'};color:${isCancelled?'var(--success)':'#999'};border-radius:6px;width:26px;height:26px;font-size:12px;cursor:pointer;margin-left:4px;line-height:1;">${isCancelled?'↩':'✕'}</button>` : '';
+    const swapBtn = (cancelable && !isCancelled) ? `<button onclick="openSwapOrderItemModal('${escapeAttrOO(o.orderNo)}', ${idx})" title="${swapped?'變更替換':'替換成其他商品'}" style="background:${swapped?'#dcf2dc':'none'};border:1px solid ${swapped?'#2d7a2d':'#ddd'};color:${swapped?'#2d7a2d':'#999'};border-radius:6px;width:26px;height:26px;font-size:12px;cursor:pointer;margin-left:4px;line-height:1;">🔄</button>` : '';
+    return `<div class="oo-item-row" style="display:flex;align-items:center;">
+      <span class="oo-item-name" style="flex:1;${rowStyle}">${escapeHtmlOO(effName || '')} × ${effQty}<br><span style="font-size:10px;color:var(--text-muted);">${escapeHtmlOO(effColor || '')}/${escapeHtmlOO(effSize || '')}</span>${swapIndicator}</span>
+      <span class="oo-item-price" style="${rowStyle}">$${(effPrice * effQty).toLocaleString()}</span>
+      ${swapBtn}${cancelBtn}
     </div>`;
   }).join('') + (items.length > 6 ? `<div class="oo-item-row" style="justify-content:center;color:var(--text-muted);font-size:11px;">…等 ${items.length} 件</div>` : '');
 
-  // 有效小計（排除已取消單品項）
-  const effectiveSubtotal = items.reduce((s, it, idx) =>
-    cancelledIdxs.includes(idx) ? s : s + (it.price || 0) * (it.qty || 1), 0
-  );
+  // 有效小計（排除已取消單品項；替換後用替換後價錢）
+  const effectiveSubtotal = items.reduce((s, it, idx) => {
+    if (cancelledIdxs.includes(idx)) return s;
+    const sw = swap[idx];
+    const p = sw ? sw.price : (it.price || 0);
+    const q = sw ? (sw.qty || it.qty || 1) : (it.qty || 1);
+    return s + p * q;
+  }, 0);
   const effectiveTotal = effectiveSubtotal + (o.shippingFee || 0);
   const hasCancelledItems = cancelledIdxs.length > 0;
+  const hasSwapped = Object.keys(swap).length > 0;
 
   // 配送資訊
   let shippingInfo = escapeHtmlOO(o.shippingLabel || '');
@@ -10878,9 +11432,9 @@ function renderOrderCard(o) {
         <div class="oo-total">
           <div>
             <span class="oo-total-label">應收</span>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(hasCancelledItems ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${o.shippingFee ? ` + 運費 $${o.shippingFee}` : ''}${o.freeShippingApplied ? ' (免運)' : ''}${hasCancelledItems ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()} · 取消 ${cancelledIdxs.length} 項)</span>` : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${((hasCancelledItems || hasSwapped) ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${o.shippingFee ? ` + 運費 $${o.shippingFee}` : ''}${o.freeShippingApplied ? ' (免運)' : ''}${(hasCancelledItems || hasSwapped) ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()}${hasCancelledItems ? ` · 取消 ${cancelledIdxs.length} 項` : ''}${hasSwapped ? ` · 替換 ${Object.keys(swap).length} 項` : ''})</span>` : ''}</div>
           </div>
-          <div class="oo-total-amount"><span class="curr">$</span>${(hasCancelledItems ? effectiveTotal : (o.total || 0)).toLocaleString()}</div>
+          <div class="oo-total-amount"><span class="curr">$</span>${((hasCancelledItems || hasSwapped) ? effectiveTotal : (o.total || 0)).toLocaleString()}</div>
         </div>
         <div class="oo-actions">
           ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
@@ -10957,6 +11511,8 @@ const COMMITTED_STATUSES = ['paid', 'shipped', 'completed'];
 
 // 本地儲存：每筆訂單被單品項取消的 index 陣列
 let orderCancelledItems = load('pos_order_cancel_items', {});
+// ★ v2.9.24 替換商品：{orderNo: {idx: {productId, name, color, size, price, qty}}}
+let orderSwapItems = load('pos_order_swap_items', {});
 
 function getCancelledIdxs(orderNo) {
   return Array.isArray(orderCancelledItems[orderNo]) ? orderCancelledItems[orderNo] : [];
@@ -10968,19 +11524,38 @@ function setCancelledIdxs(orderNo, arr) {
   save('pos_order_cancel_items', orderCancelledItems);
 }
 
-// 把本地取消狀態合併回訂單物件（onlineOrders 重新載入時呼叫）
+// ★ v2.9.24 讀/寫替換商品 map
+function getSwapMap(orderNo) {
+  return (orderSwapItems[orderNo] && typeof orderSwapItems[orderNo] === 'object') ? orderSwapItems[orderNo] : {};
+}
+function setSwapMap(orderNo, map) {
+  if (map && Object.keys(map).length) orderSwapItems[orderNo] = map;
+  else delete orderSwapItems[orderNo];
+  save('pos_order_swap_items', orderSwapItems);
+}
+
+// 把本地取消 + 替換狀態合併回訂單物件（onlineOrders 重新載入時呼叫）
 function mergeOrderCancelState(order) {
   if (!order || !order.orderNo) return order;
   order.cancelledItemIdxs = getCancelledIdxs(order.orderNo);
+  order.swapMap = getSwapMap(order.orderNo); // ★ v2.9.24
   return order;
 }
 
-// 有效商品（排除被取消的）
+// 有效商品（排除被取消的；若有替換就用替換後的）
 function getEffectiveItems(order) {
   const items = Array.isArray(order.items) ? order.items : [];
   const cancelled = order.cancelledItemIdxs || getCancelledIdxs(order.orderNo);
+  const swap = order.swapMap || getSwapMap(order.orderNo);
   return items
-    .map((it, idx) => ({ item: it, idx }))
+    .map((it, idx) => {
+      // ★ v2.9.24 有替換就用替換後的資料
+      if (swap[idx]) {
+        const sw = swap[idx];
+        return { item: { ...it, ...sw, _swapped: true, _originalName: it.name, _originalPrice: it.price }, idx };
+      }
+      return { item: it, idx };
+    })
     .filter(x => !cancelled.includes(x.idx));
 }
 
@@ -11241,6 +11816,261 @@ function toggleCancelOrderItem(orderNo, itemIdx) {
 
   renderOnlineOrders();
   toast(isCancelling ? `已取消：${label}` : `已恢復：${label}`, isCancelling ? 'warn' : 'success');
+}
+
+// ============================================================
+// 🔄 線上訂單替換商品 (v2.9.24)
+// ============================================================
+let _swapState = { orderNo: '', itemIdx: -1, productId: '', color: '', size: '', price: 0, qty: 1 };
+
+function openSwapOrderItemModal(orderNo, itemIdx) {
+  const order = onlineOrders.find(o => o.orderNo === orderNo);
+  if (!order) return;
+  const items = Array.isArray(order.items) ? order.items : [];
+  const it = items[itemIdx];
+  if (!it) return;
+
+  // 既存的 swap info
+  const swapMap = getSwapMap(orderNo);
+  const existing = swapMap[itemIdx];
+
+  _swapState = {
+    orderNo,
+    itemIdx,
+    productId: existing?.productId || '',
+    color: existing?.color || '',
+    size: existing?.size || '',
+    price: existing?.price || 0,
+    qty: existing?.qty || (it.qty || 1),
+    name: existing?.name || '',
+  };
+
+  // 原商品展示
+  document.getElementById('swap-original').innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">原商品</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span style="font-weight:700;color:var(--primary);">${escapeHtmlOO(it.name || '')}${existing ? '（目前已替換成下方商品）' : ''}</span>
+      <span style="font-weight:700;color:#999;">$${(it.price || 0)} × ${it.qty || 1}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${escapeHtmlOO(it.color || '')}/${escapeHtmlOO(it.size || '')} · 小計 $${(it.price || 0) * (it.qty || 1)}</div>
+  `;
+
+  // 顯示 / 隱藏 復原按鈕
+  const removeBtn = document.getElementById('swap-remove-btn');
+  if (removeBtn) removeBtn.style.display = existing ? '' : 'none';
+
+  document.getElementById('swap-search').value = '';
+  document.getElementById('swap-variant-section').style.display = 'none';
+  document.getElementById('swap-confirm-btn').disabled = true;
+  swapFilterProducts();
+  openModal('order-swap-modal');
+
+  // 若有既存替換 → 自動帶入該商品
+  if (existing && existing.productId) {
+    const p = products.find(x => x.id === existing.productId);
+    if (p) {
+      setTimeout(() => swapSelectProduct(existing.productId), 50);
+    }
+  }
+}
+
+function swapFilterProducts() {
+  const q = (document.getElementById('swap-search')?.value || '').trim().toLowerCase();
+  const el = document.getElementById('swap-product-list');
+  if (!el) return;
+  const list = products
+    .filter(p => {
+      if (p.onlineShop === false) return false; // 只能換成「上架中」的商品
+      if (!q) return true;
+      return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
+    })
+    .slice(0, 50);
+  if (list.length === 0) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品</div>';
+    return;
+  }
+  el.innerHTML = list.map(p => {
+    const mainImg = (p.images && p.images[0]) || p.image || '';
+    const thumb = mainImg
+      ? `<div style="width:40px;height:40px;border-radius:6px;background:url('${mainImg.replace(/'/g,"\\'")}') center/cover;flex-shrink:0;"></div>`
+      : `<div style="width:40px;height:40px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">🖼</div>`;
+    const isSelected = _swapState.productId === p.id;
+    return `
+      <div onclick="swapSelectProduct('${p.id}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);${isSelected ? 'background:#fffbf0;' : ''}" onmouseover="this.style.background='#fff8e8';" onmouseout="this.style.background='${isSelected ? '#fffbf0' : ''}';">
+        ${thumb}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${p.sku || ''} · $${p.price || 0}</div>
+        </div>
+        ${isSelected ? '<span style="color:var(--gold);font-size:14px;">✓</span>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function swapSelectProduct(pid) {
+  const p = products.find(x => x.id === pid);
+  if (!p) return;
+  _swapState.productId = pid;
+  _swapState.name = p.name;
+  // 若之前沒選過 / 選的是別的商品 → reset color/size + price
+  const prevPid = _swapState.productId;
+  if (prevPid !== pid) {
+    _swapState.color = (p.colors && p.colors[0]) || '';
+    _swapState.size = (p.sizes && p.sizes[0]) || '';
+    _swapState.price = p.price || 0;
+  } else {
+    if (!_swapState.price) _swapState.price = p.price || 0;
+  }
+  document.getElementById('swap-selected-name').textContent = p.name;
+  document.getElementById('swap-price').value = _swapState.price;
+  // 色、尺寸選擇
+  const colorSection = document.getElementById('swap-color-section');
+  const sizeSection = document.getElementById('swap-size-section');
+  colorSection.innerHTML = (p.colors && p.colors.length) ? `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">顏色</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+      ${p.colors.map(c => `<button type="button" onclick="swapSetColor('${c.replace(/'/g,"\\'")}')" style="padding:4px 10px;border-radius:12px;border:1px solid var(--gold);background:${c===_swapState.color?'var(--gold)':'#fff'};color:${c===_swapState.color?'#fff':'var(--gold)'};font-size:11px;cursor:pointer;font-weight:600;">${escapeHtml(c)}</button>`).join('')}
+    </div>
+  ` : '';
+  sizeSection.innerHTML = (p.sizes && p.sizes.length) ? `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">尺寸</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+      ${p.sizes.map(s => `<button type="button" onclick="swapSetSize('${s.replace(/'/g,"\\'")}')" style="padding:4px 12px;border-radius:12px;border:1px solid var(--primary);background:${s===_swapState.size?'var(--primary)':'#fff'};color:${s===_swapState.size?'#fff':'var(--primary)'};font-size:11px;cursor:pointer;font-weight:600;">${escapeHtml(s)}</button>`).join('')}
+    </div>
+  ` : '';
+  document.getElementById('swap-qty-display').textContent = _swapState.qty;
+  document.getElementById('swap-variant-section').style.display = '';
+  document.getElementById('swap-confirm-btn').disabled = false;
+  updateSwapDiffPreview();
+  swapFilterProducts(); // 更新 selected highlight
+  // 綁定 price input 事件（一次）
+  const priceInput = document.getElementById('swap-price');
+  if (priceInput && !priceInput._bound) {
+    priceInput._bound = true;
+    priceInput.addEventListener('input', () => {
+      _swapState.price = parseInt(priceInput.value) || 0;
+      updateSwapDiffPreview();
+    });
+  }
+}
+
+function swapSetColor(c) { _swapState.color = c; swapSelectProduct(_swapState.productId); }
+function swapSetSize(s) { _swapState.size = s; swapSelectProduct(_swapState.productId); }
+function swapChangeQty(delta) {
+  _swapState.qty = Math.max(1, (_swapState.qty || 1) + delta);
+  document.getElementById('swap-qty-display').textContent = _swapState.qty;
+  updateSwapDiffPreview();
+}
+
+function updateSwapDiffPreview() {
+  const order = onlineOrders.find(o => o.orderNo === _swapState.orderNo);
+  if (!order) return;
+  const items = order.items || [];
+  const origItem = items[_swapState.itemIdx];
+  if (!origItem) return;
+  const origSubtotal = (origItem.price || 0) * (origItem.qty || 1);
+  const newSubtotal = _swapState.price * _swapState.qty;
+  const diff = newSubtotal - origSubtotal;
+  const el = document.getElementById('swap-diff-preview');
+  if (!el) return;
+  const diffText = diff === 0 ? '價錢相同，無差額' :
+    diff > 0 ? `客人需<strong style="color:#c0392b;">補 $${diff}</strong>（新商品較貴）` :
+    `需<strong style="color:#2d7a2d;">退 $${-diff}</strong> 給客人（新商品較便宜）`;
+  el.innerHTML = `
+    <span style="color:var(--text-muted);">原 $${origSubtotal} → 新 $${newSubtotal}</span> · ${diffText}
+  `;
+  el.style.background = diff === 0 ? '#fff' : (diff > 0 ? '#fee' : '#dcf2dc');
+}
+
+function confirmSwap() {
+  if (!_swapState.productId) { toast('請先選要替換的商品', 'warn'); return; }
+  if (_swapState.price <= 0) { toast('價錢必須大於 0', 'warn'); return; }
+  const order = onlineOrders.find(o => o.orderNo === _swapState.orderNo);
+  if (!order) return;
+  const items = order.items || [];
+  const origItem = items[_swapState.itemIdx];
+  if (!origItem) return;
+
+  // 存 swap map
+  const map = getSwapMap(_swapState.orderNo);
+  const prevSwap = map[_swapState.itemIdx]; // 可能已有舊 swap 要還原
+  map[_swapState.itemIdx] = {
+    productId: _swapState.productId,
+    name: _swapState.name,
+    color: _swapState.color,
+    size: _swapState.size,
+    price: _swapState.price,
+    qty: _swapState.qty,
+  };
+  setSwapMap(_swapState.orderNo, map);
+  order.swapMap = map;
+
+  // 已 commit 訂單：還原原商品庫存、扣新商品庫存、重建 tx
+  if (isOrderCommitted(_swapState.orderNo)) {
+    // 1. 還原「上一次有效」的庫存（如果有先前 swap 就還原該 swap，否則還原原品項）
+    const toRestore = prevSwap || origItem;
+    if (toRestore.productId) {
+      const p = products.find(x => x.id === toRestore.productId);
+      if (p) {
+        const q = toRestore.qty || origItem.qty || 1;
+        if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+          const key = (toRestore.color || '') + '|' + (toRestore.size || '');
+          p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + q;
+          p.stock = calcStockTotal(p.stockMap);
+        } else {
+          p.stock = (p.stock || 0) + q;
+        }
+      }
+    }
+    // 2. 扣新商品庫存
+    deductStock(_swapState.productId, _swapState.color, _swapState.size, _swapState.qty);
+    save('pos_products', products);
+    // 3. 重建這張訂單的 tx
+    upsertOrderTx(order);
+  }
+
+  renderOnlineOrders();
+  closeModal('order-swap-modal');
+  toast(`✅ 已替換成「${_swapState.name}」`, 'success');
+}
+
+function removeSwap() {
+  const map = getSwapMap(_swapState.orderNo);
+  const prevSwap = map[_swapState.itemIdx];
+  if (!prevSwap) { closeModal('order-swap-modal'); return; }
+  if (!confirm('復原這個替換（恢復成原本的商品）？')) return;
+  delete map[_swapState.itemIdx];
+  setSwapMap(_swapState.orderNo, map);
+  const order = onlineOrders.find(o => o.orderNo === _swapState.orderNo);
+  if (order) order.swapMap = map;
+
+  // 已 commit 訂單：還原 swap 商品庫存、扣回原商品庫存、重建 tx
+  if (order && isOrderCommitted(_swapState.orderNo)) {
+    const origItem = (order.items || [])[_swapState.itemIdx];
+    if (prevSwap.productId) {
+      const p = products.find(x => x.id === prevSwap.productId);
+      if (p) {
+        const q = prevSwap.qty || 1;
+        if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+          const key = (prevSwap.color || '') + '|' + (prevSwap.size || '');
+          p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + q;
+          p.stock = calcStockTotal(p.stockMap);
+        } else {
+          p.stock = (p.stock || 0) + q;
+        }
+      }
+    }
+    if (origItem && origItem.productId) {
+      deductStock(origItem.productId, origItem.color || '', origItem.size || '', origItem.qty || 1);
+    }
+    save('pos_products', products);
+    upsertOrderTx(order);
+  }
+
+  renderOnlineOrders();
+  closeModal('order-swap-modal');
+  toast('↩ 已復原替換', 'success');
 }
 
 async function updateOrderStatusRemote(orderNo, newStatus) {
