@@ -2385,7 +2385,8 @@
     <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
       <div style="padding:10px 12px;background:#fff3e0;border-left:3px solid #D49768;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.7;color:#8B6F47;">
         💡 挑選要替換成的新商品 + 規格 + 數量，訂單金額會自動更新為新價錢。<br>
-        🎯 替換後需 LINE 跟客人收/退差額。
+        🎯 替換後需 LINE 跟客人收/退差額。<br>
+        🔍 清單含店內所有商品（含未上架），可用名稱或款號搜尋。
       </div>
       <!-- 原商品資訊 -->
       <div id="swap-original" style="padding:10px 12px;background:#f5f5f5;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
@@ -2415,6 +2416,51 @@
       ${0}<!-- 動態加按鈕 -->
       <button class="btn btn-outline" id="swap-remove-btn" onclick="removeSwap()" style="display:none;color:var(--danger);border-color:var(--danger);">↩ 復原替換</button>
       <button class="btn btn-primary" onclick="confirmSwap()" id="swap-confirm-btn" disabled>🔄 確認替換</button>
+    </div>
+  </div>
+</div>
+
+<!-- ➕ 線上訂單加品項 modal (v2.9.27) -->
+<div class="modal-overlay" id="order-add-item-modal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h3>➕ 加商品到訂單</h3>
+      <button class="modal-close" onclick="closeModal('order-add-item-modal')">×</button>
+    </div>
+    <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+      <div style="padding:10px 12px;background:#e8f5e8;border-left:3px solid #4a8a4a;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.7;color:#2d7a2d;">
+        💡 把額外商品加到這張訂單（例：加送、補償、客人追加）。<br>
+        🎯 加品項後總金額會更新，需 LINE 跟客人說明。<br>
+        🔍 清單含店內所有商品。
+      </div>
+      <!-- 訂單目前資訊 -->
+      <div id="additem-order-info" style="padding:10px 12px;background:#f5f5f5;border-radius:8px;margin-bottom:12px;font-size:13px;"></div>
+      <!-- 已加過的品項列表 -->
+      <div id="additem-existing" style="margin-bottom:12px;"></div>
+      <!-- 商品搜尋 -->
+      <div style="margin-bottom:10px;">
+        <input type="text" id="additem-search" placeholder="🔍 搜尋商品名稱 / 款號" oninput="addItemFilterProducts()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+      </div>
+      <div id="additem-product-list" style="max-height:35vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#faf7f2;"></div>
+      <!-- 選定商品後的規格選擇 -->
+      <div id="additem-variant-section" style="display:none;margin-top:12px;padding:12px;background:#f0f8f0;border:1px solid #4a8a4a;border-radius:8px;">
+        <div style="font-size:13px;font-weight:700;color:#2d7a2d;margin-bottom:8px;" id="additem-selected-name"></div>
+        <div id="additem-color-section" style="margin-bottom:8px;"></div>
+        <div id="additem-size-section" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <label style="font-size:12px;color:var(--text-muted);">數量</label>
+          <button type="button" onclick="addItemChangeQty(-1)" style="width:28px;height:28px;border:1px solid var(--border);background:#fff;border-radius:5px;cursor:pointer;">−</button>
+          <span id="additem-qty-display" style="min-width:30px;text-align:center;font-weight:700;">1</span>
+          <button type="button" onclick="addItemChangeQty(1)" style="width:28px;height:28px;border:1px solid var(--border);background:#fff;border-radius:5px;cursor:pointer;">+</button>
+          <span style="font-size:12px;color:var(--text-muted);margin-left:auto;">單價</span>
+          <input type="number" id="additem-price" value="0" min="0" style="width:80px;padding:5px 8px;border:1px solid #4a8a4a;border-radius:5px;font-size:13px;font-weight:700;color:#2d7a2d;text-align:right;">
+        </div>
+        <div id="additem-add-preview" style="margin-top:10px;padding:8px 12px;background:#fff;border-radius:6px;font-size:13px;text-align:center;"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('order-add-item-modal')">完成</button>
+      <button class="btn btn-primary" onclick="confirmAddItem()" id="additem-confirm-btn" disabled style="background:#4a8a4a;border-color:#4a8a4a;">➕ 加入訂單</button>
     </div>
   </div>
 </div>
@@ -7349,6 +7395,8 @@ async function syncDownload(showToast = false) {
     loadOrderSwaps();
     // 🎁 順便拉訂單自訂修改（免運）
     loadOrderOverrides();
+    // ➕ 順便拉訂單加品項
+    loadOrderAddedItems();
     if (changed) {
       // 重新渲染各畫面
       renderCatBar(); renderProducts(); renderProductsTable();
@@ -11369,7 +11417,16 @@ function renderOrderCard(o) {
   const items = Array.isArray(o.items) ? o.items : [];
   const cancelledIdxs = o.cancelledItemIdxs || getCancelledIdxs(o.orderNo);
   const swap = o.swapMap || getSwapMap(o.orderNo); // ★ v2.9.24
+  const added = getAddedItems(o.orderNo); // ★ v2.9.27
   const cancelable = o.status !== 'cancelled' && o.status !== 'completed'; // 已完成/已取消訂單不能再動品項
+  const addedItemsHtml = added.map((ai, aidx) => {
+    const removeBtn = cancelable ? `<button onclick="removeAddedItem('${escapeAttrOO(o.orderNo)}', ${aidx})" title="移除加品項" style="background:none;border:1px solid #c0392b;color:#c0392b;border-radius:6px;width:26px;height:26px;font-size:12px;cursor:pointer;margin-left:4px;line-height:1;">✕</button>` : '';
+    return `<div class="oo-item-row" style="display:flex;align-items:center;background:#e8f5e8;border-radius:6px;padding:4px 6px;margin-top:2px;">
+      <span class="oo-item-name" style="flex:1;">${escapeHtmlOO(ai.name || '')} × ${ai.qty || 1}<br><span style="font-size:10px;color:#2d7a2d;">${escapeHtmlOO(ai.color || '')}/${escapeHtmlOO(ai.size || '')} · <strong>➕ 加品項</strong></span></span>
+      <span class="oo-item-price" style="color:#2d7a2d;font-weight:700;">+$${((ai.price||0) * (ai.qty||1)).toLocaleString()}</span>
+      ${removeBtn}
+    </div>`;
+  }).join('');
   const itemsHtml = items.slice(0, 6).map((i, idx) => {
     const isCancelled = cancelledIdxs.includes(idx);
     const swapped = swap[idx];
@@ -11387,7 +11444,7 @@ function renderOrderCard(o) {
       <span class="oo-item-price" style="${rowStyle}">$${(effPrice * effQty).toLocaleString()}</span>
       ${swapBtn}${cancelBtn}
     </div>`;
-  }).join('') + (items.length > 6 ? `<div class="oo-item-row" style="justify-content:center;color:var(--text-muted);font-size:11px;">…等 ${items.length} 件</div>` : '');
+  }).join('') + (items.length > 6 ? `<div class="oo-item-row" style="justify-content:center;color:var(--text-muted);font-size:11px;">…等 ${items.length} 件</div>` : '') + addedItemsHtml;
 
   // 有效小計（排除已取消單品項；替換後用替換後價錢）
   const effectiveSubtotal = items.reduce((s, it, idx) => {
@@ -11397,13 +11454,16 @@ function renderOrderCard(o) {
     const q = sw ? (sw.qty || it.qty || 1) : (it.qty || 1);
     return s + p * q;
   }, 0);
+  // ★ v2.9.27 加品項小計
+  const addedSubtotal = added.reduce((s, it) => s + (it.price || 0) * (it.qty || 1), 0);
   // ★ v2.9.26 本單免運 override
   const waiveShip = getOrderWaiveShipping(o.orderNo);
   const effShippingFee = waiveShip ? 0 : (o.shippingFee || 0);
-  const effectiveTotal = effectiveSubtotal + effShippingFee;
+  const effectiveTotal = effectiveSubtotal + addedSubtotal + effShippingFee;
   const hasCancelledItems = cancelledIdxs.length > 0;
   const hasSwapped = Object.keys(swap).length > 0;
-  const hasAdjustment = hasCancelledItems || hasSwapped || waiveShip;
+  const hasAdded = added.length > 0; // ★ v2.9.27
+  const hasAdjustment = hasCancelledItems || hasSwapped || waiveShip || hasAdded;
 
   // 配送資訊
   let shippingInfo = escapeHtmlOO(o.shippingLabel || '');
@@ -11467,12 +11527,13 @@ function renderOrderCard(o) {
         <div class="oo-total">
           <div>
             <span class="oo-total-label">應收</span>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(hasAdjustment ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${o.shippingFee ? (waiveShip ? ` + <span style="color:#2d7a2d;font-weight:700;">免運</span>` : ` + 運費 $${o.shippingFee}`) : ''}${o.freeShippingApplied && !o.shippingFee ? ' (免運)' : ''}${hasAdjustment ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()}${hasCancelledItems ? ` · 取消 ${cancelledIdxs.length} 項` : ''}${hasSwapped ? ` · 替換 ${Object.keys(swap).length} 項` : ''}${waiveShip ? ` · 免運 -$${o.shippingFee || 0}` : ''})</span>` : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">小計 $${(hasAdjustment ? effectiveSubtotal : (o.subtotal || 0)).toLocaleString()}${hasAdded ? ` + 加品項 $${addedSubtotal.toLocaleString()}` : ''}${o.shippingFee ? (waiveShip ? ` + <span style="color:#2d7a2d;font-weight:700;">免運</span>` : ` + 運費 $${o.shippingFee}`) : ''}${o.freeShippingApplied && !o.shippingFee ? ' (免運)' : ''}${hasAdjustment ? ` <span style="color:var(--warning);">(原 $${(o.total || 0).toLocaleString()}${hasCancelledItems ? ` · 取消 ${cancelledIdxs.length} 項` : ''}${hasSwapped ? ` · 替換 ${Object.keys(swap).length} 項` : ''}${hasAdded ? ` · 加 ${added.length} 項` : ''}${waiveShip ? ` · 免運 -$${o.shippingFee || 0}` : ''})</span>` : ''}</div>
           </div>
           <div class="oo-total-amount"><span class="curr">$</span>${(hasAdjustment ? effectiveTotal : (o.total || 0)).toLocaleString()}</div>
         </div>
         <div class="oo-actions">
           ${nextStatus ? `<button class="oo-action-btn oo-action-primary" onclick="advanceOrderStatus('${escapeAttrOO(o.orderNo)}')">→ ${OO_STATUS_LABELS[nextStatus]}</button>` : `<button class="oo-action-btn oo-action-secondary" disabled>已完成</button>`}
+          ${cancelable ? `<button class="oo-action-btn oo-action-secondary" onclick="openAddItemModal('${escapeAttrOO(o.orderNo)}')" style="background:#e8f5e8;border-color:#4a8a4a;color:#2d7a2d;">➕ 加商品</button>` : ''}
           <button class="oo-action-btn oo-action-secondary" onclick="openOrderChat('${escapeAttrOO(o.orderNo)}')" style="position:relative;">💬 對話${getUnreadCount(o.orderNo) > 0 ? '<span style="position:absolute;top:-4px;right:-4px;background:#dc3545;color:#fff;width:16px;height:16px;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff;">!</span>' : ''}</button>
           <button class="oo-action-btn oo-action-secondary" onclick="showOrderDetail('${escapeAttrOO(o.orderNo)}')">詳情</button>
           ${status !== 'cancelled' && status !== 'completed' ? `<button class="oo-action-btn oo-action-warn" onclick="cancelOrder('${escapeAttrOO(o.orderNo)}')">取消</button>` : ''}
@@ -11552,6 +11613,8 @@ let orderSwapItems = load('pos_order_swap_items', {});
 let orderSwapPayStatus = load('pos_order_swap_pay_status', {});
 // ★ v2.9.26 訂單自訂修改：{orderNo: {waiveShipping: true}}（雲端同步）
 let orderOverrides = load('pos_order_overrides', {});
+// ★ v2.9.27 加品項：{orderNo: [{productId, name, color, size, price, qty}, ...]}（雲端同步）
+let orderAddedItems = load('pos_order_added_items', {});
 
 function getCancelledIdxs(orderNo) {
   return Array.isArray(orderCancelledItems[orderNo]) ? orderCancelledItems[orderNo] : [];
@@ -11591,12 +11654,24 @@ function setSwapPayStatus(orderNo, status) {
   if (typeof uploadOrderSwap === 'function') uploadOrderSwap(orderNo);
 }
 
-// 計算替換後總金額差（新小計 - 原小計；排除已取消項）
+// ★ v2.9.27 加品項 getter / setter
+function getAddedItems(orderNo) {
+  return Array.isArray(orderAddedItems[orderNo]) ? orderAddedItems[orderNo] : [];
+}
+function setAddedItems(orderNo, arr) {
+  if (arr && arr.length) orderAddedItems[orderNo] = arr;
+  else delete orderAddedItems[orderNo];
+  save('pos_order_added_items', orderAddedItems);
+  if (typeof uploadOrderAddedItems === 'function') uploadOrderAddedItems(orderNo);
+}
+
+// 計算替換 + 加品項後總金額差（含加品項全額加進去）
 function calcSwapDiff(order) {
   if (!order) return 0;
   const items = Array.isArray(order.items) ? order.items : [];
   const cancelled = order.cancelledItemIdxs || getCancelledIdxs(order.orderNo);
   const swap = order.swapMap || getSwapMap(order.orderNo);
+  const added = getAddedItems(order.orderNo);
   let orig = 0, after = 0;
   items.forEach((it, idx) => {
     if (cancelled.includes(idx)) return;
@@ -11606,7 +11681,9 @@ function calcSwapDiff(order) {
       after += (sw.price || 0) * (sw.qty || 1);
     }
   });
-  return after - orig;
+  // 加品項全部算差額
+  const addedSubtotal = added.reduce((s, it) => s + (it.price || 0) * (it.qty || 1), 0);
+  return (after - orig) + addedSubtotal;
 }
 
 // ★ v2.9.25 上傳單筆訂單的替換資料到 Apps Script
@@ -11703,6 +11780,33 @@ function toggleOrderWaiveShipping(orderNo) {
   toast(next ? `🎁 已給本單免運（省 $${order.shippingFee || 0}）` : '↩ 已恢復運費', 'success');
 }
 
+// ★ v2.9.27 上傳 / 下載 加品項
+async function uploadOrderAddedItems(orderNo) {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl || !orderNo) return;
+  if (window.__isDownloadingSync) return;
+  try {
+    const items = getAddedItems(orderNo);
+    const res = await fetch(appSettings.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'saveOrderAddedItems', orderNo: orderNo, items: items }),
+    });
+    const data = await res.json();
+    if (!data.ok) console.warn('uploadOrderAddedItems 失敗', data.error);
+  } catch (err) { console.warn('uploadOrderAddedItems 錯誤', err); }
+}
+async function loadOrderAddedItems() {
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  try {
+    const res = await fetch(appSettings.syncUrl + '?action=getOrderAddedItems&t=' + Date.now());
+    const data = await res.json();
+    if (!data.ok) return;
+    orderAddedItems = data.added || {};
+    save('pos_order_added_items', orderAddedItems);
+    if (typeof renderOnlineOrders === 'function') try { renderOnlineOrders(); } catch(e) {}
+  } catch (err) { console.warn('loadOrderAddedItems 錯誤', err); }
+}
+
 // ★ v2.9.25 從雲端拉取所有訂單的替換資料
 async function loadOrderSwaps() {
   if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
@@ -11745,7 +11849,8 @@ function getEffectiveItems(order) {
   const items = Array.isArray(order.items) ? order.items : [];
   const cancelled = order.cancelledItemIdxs || getCancelledIdxs(order.orderNo);
   const swap = order.swapMap || getSwapMap(order.orderNo);
-  return items
+  const added = getAddedItems(order.orderNo); // ★ v2.9.27
+  const base = items
     .map((it, idx) => {
       // ★ v2.9.24 有替換就用替換後的資料
       if (swap[idx]) {
@@ -11755,6 +11860,9 @@ function getEffectiveItems(order) {
       return { item: it, idx };
     })
     .filter(x => !cancelled.includes(x.idx));
+  // ★ v2.9.27 加品項（用 'add_<n>' 當 idx 以避免與原品項衝突）
+  const addedEffective = added.map((it, i) => ({ item: { ...it, _added: true }, idx: 'add_' + i }));
+  return base.concat(addedEffective);
 }
 
 // 訂單是否已 commit（用 tx 有沒有 sourceOrderNo === orderNo 判斷）
@@ -12079,13 +12187,13 @@ function swapFilterProducts() {
   const q = (document.getElementById('swap-search')?.value || '').trim().toLowerCase();
   const el = document.getElementById('swap-product-list');
   if (!el) return;
+  // ★ v2.9.27 顯示所有商品（含未上架），讓 Wan 補償客人時可以選店內任何品
   const list = products
     .filter(p => {
-      if (p.onlineShop === false) return false; // 只能換成「上架中」的商品
       if (!q) return true;
       return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
     })
-    .slice(0, 50);
+    .slice(0, 100);
   if (list.length === 0) {
     el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品</div>';
     return;
@@ -12272,6 +12380,239 @@ function removeSwap() {
   renderOnlineOrders();
   closeModal('order-swap-modal');
   toast('↩ 已復原替換', 'success');
+}
+
+// ============================================================
+// ➕ 線上訂單加品項 (v2.9.27)
+// ============================================================
+let _addItemState = { orderNo: '', productId: '', color: '', size: '', price: 0, qty: 1, name: '' };
+
+function openAddItemModal(orderNo) {
+  const order = onlineOrders.find(o => o.orderNo === orderNo);
+  if (!order) return;
+  _addItemState = { orderNo, productId: '', color: '', size: '', price: 0, qty: 1, name: '' };
+  // 訂單目前資訊
+  document.getElementById('additem-order-info').innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">訂單 ${escapeHtmlOO(orderNo)} · ${escapeHtmlOO(order.name || '')}</div>
+    <div style="font-weight:700;color:var(--primary);">目前應收 $${(order.total || 0).toLocaleString()}</div>
+  `;
+  renderAddItemExisting();
+  document.getElementById('additem-search').value = '';
+  document.getElementById('additem-variant-section').style.display = 'none';
+  document.getElementById('additem-confirm-btn').disabled = true;
+  addItemFilterProducts();
+  openModal('order-add-item-modal');
+}
+
+function renderAddItemExisting() {
+  const added = getAddedItems(_addItemState.orderNo);
+  const el = document.getElementById('additem-existing');
+  if (!el) return;
+  if (added.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">已加入的品項（可移除）</div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      ${added.map((it, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#e8f5e8;border:1px solid #4a8a4a;border-radius:6px;">
+          <div style="flex:1;min-width:0;font-size:12px;color:#2d7a2d;">
+            <strong>${escapeHtmlOO(it.name || '')}</strong> × ${it.qty || 1}
+            <span style="font-size:10px;color:var(--text-muted);"> · ${escapeHtmlOO(it.color || '')}/${escapeHtmlOO(it.size || '')} · $${(it.price || 0).toLocaleString()}</span>
+          </div>
+          <button onclick="removeAddedItemInModal(${i})" style="background:none;border:1px solid #c0392b;color:#c0392b;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer;">✕ 移除</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function addItemFilterProducts() {
+  const q = (document.getElementById('additem-search')?.value || '').trim().toLowerCase();
+  const el = document.getElementById('additem-product-list');
+  if (!el) return;
+  const list = products
+    .filter(p => {
+      if (!q) return true;
+      return (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
+    })
+    .slice(0, 100);
+  if (list.length === 0) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">找不到商品</div>';
+    return;
+  }
+  el.innerHTML = list.map(p => {
+    const mainImg = (p.images && p.images[0]) || p.image || '';
+    const thumb = mainImg
+      ? `<div style="width:40px;height:40px;border-radius:6px;background:url('${mainImg.replace(/'/g,"\\'")}') center/cover;flex-shrink:0;"></div>`
+      : `<div style="width:40px;height:40px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">🖼</div>`;
+    const isSelected = _addItemState.productId === p.id;
+    return `
+      <div onclick="addItemSelectProduct('${p.id}')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border);${isSelected ? 'background:#f0f8f0;' : ''}" onmouseover="this.style.background='#e8f5e8';" onmouseout="this.style.background='${isSelected ? '#f0f8f0' : ''}';">
+        ${thumb}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name || '')}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${p.sku || ''} · $${p.price || 0}</div>
+        </div>
+        ${isSelected ? '<span style="color:#2d7a2d;font-size:14px;">✓</span>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function addItemSelectProduct(pid) {
+  const p = products.find(x => x.id === pid);
+  if (!p) return;
+  _addItemState.productId = pid;
+  _addItemState.name = p.name;
+  _addItemState.color = (p.colors && p.colors[0]) || '';
+  _addItemState.size = (p.sizes && p.sizes[0]) || '';
+  _addItemState.price = p.price || 0;
+  _addItemState.qty = 1;
+  document.getElementById('additem-selected-name').textContent = p.name;
+  document.getElementById('additem-price').value = _addItemState.price;
+  const colorSection = document.getElementById('additem-color-section');
+  const sizeSection = document.getElementById('additem-size-section');
+  colorSection.innerHTML = (p.colors && p.colors.length) ? `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">顏色</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+      ${p.colors.map(c => `<button type="button" onclick="addItemSetColor('${c.replace(/'/g,"\\'")}')" style="padding:4px 10px;border-radius:12px;border:1px solid #4a8a4a;background:${c===_addItemState.color?'#4a8a4a':'#fff'};color:${c===_addItemState.color?'#fff':'#4a8a4a'};font-size:11px;cursor:pointer;font-weight:600;">${escapeHtml(c)}</button>`).join('')}
+    </div>
+  ` : '';
+  sizeSection.innerHTML = (p.sizes && p.sizes.length) ? `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">尺寸</div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+      ${p.sizes.map(s => `<button type="button" onclick="addItemSetSize('${s.replace(/'/g,"\\'")}')" style="padding:4px 12px;border-radius:12px;border:1px solid var(--primary);background:${s===_addItemState.size?'var(--primary)':'#fff'};color:${s===_addItemState.size?'#fff':'var(--primary)'};font-size:11px;cursor:pointer;font-weight:600;">${escapeHtml(s)}</button>`).join('')}
+    </div>
+  ` : '';
+  document.getElementById('additem-qty-display').textContent = _addItemState.qty;
+  document.getElementById('additem-variant-section').style.display = '';
+  document.getElementById('additem-confirm-btn').disabled = false;
+  updateAddItemPreview();
+  addItemFilterProducts();
+  const priceInput = document.getElementById('additem-price');
+  if (priceInput && !priceInput._bound) {
+    priceInput._bound = true;
+    priceInput.addEventListener('input', () => {
+      _addItemState.price = parseInt(priceInput.value) || 0;
+      updateAddItemPreview();
+    });
+  }
+}
+
+function addItemSetColor(c) { _addItemState.color = c; addItemSelectProduct(_addItemState.productId); }
+function addItemSetSize(s) { _addItemState.size = s; addItemSelectProduct(_addItemState.productId); }
+function addItemChangeQty(delta) {
+  _addItemState.qty = Math.max(1, (_addItemState.qty || 1) + delta);
+  document.getElementById('additem-qty-display').textContent = _addItemState.qty;
+  updateAddItemPreview();
+}
+
+function updateAddItemPreview() {
+  const el = document.getElementById('additem-add-preview');
+  if (!el) return;
+  const subtotal = (_addItemState.price || 0) * (_addItemState.qty || 1);
+  el.innerHTML = `
+    <span style="color:var(--text-muted);">加入 ${_addItemState.qty} 件 × $${_addItemState.price || 0}</span> ·
+    <strong style="color:#2d7a2d;">共 +$${subtotal.toLocaleString()}</strong>
+  `;
+  el.style.background = '#dcf2dc';
+}
+
+function confirmAddItem() {
+  if (!_addItemState.productId) { toast('請先選商品', 'warn'); return; }
+  if (_addItemState.price < 0) { toast('價錢不能為負', 'warn'); return; }
+  const order = onlineOrders.find(o => o.orderNo === _addItemState.orderNo);
+  if (!order) return;
+  const added = getAddedItems(_addItemState.orderNo).slice();
+  added.push({
+    productId: _addItemState.productId,
+    name: _addItemState.name,
+    color: _addItemState.color,
+    size: _addItemState.size,
+    price: _addItemState.price,
+    qty: _addItemState.qty,
+  });
+  setAddedItems(_addItemState.orderNo, added);
+  // 已 commit 訂單 → 扣新商品庫存 + 重建 tx
+  if (isOrderCommitted(_addItemState.orderNo)) {
+    deductStock(_addItemState.productId, _addItemState.color, _addItemState.size, _addItemState.qty);
+    save('pos_products', products);
+    upsertOrderTx(order);
+  }
+  // reset 選擇 → 允許繼續加
+  _addItemState.productId = '';
+  document.getElementById('additem-variant-section').style.display = 'none';
+  document.getElementById('additem-confirm-btn').disabled = true;
+  document.getElementById('additem-search').value = '';
+  renderAddItemExisting();
+  addItemFilterProducts();
+  renderOnlineOrders();
+  toast(`✅ 已加入「${_addItemState.name}」`, 'success');
+}
+
+// 從列表直接移除加品項（卡片的 ✕ 按鈕）
+function removeAddedItem(orderNo, aidx) {
+  const added = getAddedItems(orderNo).slice();
+  if (aidx < 0 || aidx >= added.length) return;
+  const removed = added[aidx];
+  if (!confirm(`移除加品項「${removed.name}」？`)) return;
+  // 還原庫存（如已 commit）
+  const order = onlineOrders.find(o => o.orderNo === orderNo);
+  if (order && isOrderCommitted(orderNo) && removed.productId) {
+    const p = products.find(x => x.id === removed.productId);
+    if (p) {
+      const q = removed.qty || 1;
+      if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+        const key = (removed.color || '') + '|' + (removed.size || '');
+        p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + q;
+        p.stock = calcStockTotal(p.stockMap);
+      } else {
+        p.stock = (p.stock || 0) + q;
+      }
+    }
+    added.splice(aidx, 1);
+    setAddedItems(orderNo, added);
+    save('pos_products', products);
+    upsertOrderTx(order);
+  } else {
+    added.splice(aidx, 1);
+    setAddedItems(orderNo, added);
+  }
+  renderOnlineOrders();
+  toast('↩ 已移除加品項', 'success');
+}
+
+// 在 modal 內移除（不彈 confirm，簡化）
+function removeAddedItemInModal(aidx) {
+  const added = getAddedItems(_addItemState.orderNo).slice();
+  if (aidx < 0 || aidx >= added.length) return;
+  const removed = added[aidx];
+  const order = onlineOrders.find(o => o.orderNo === _addItemState.orderNo);
+  if (order && isOrderCommitted(_addItemState.orderNo) && removed.productId) {
+    const p = products.find(x => x.id === removed.productId);
+    if (p) {
+      const q = removed.qty || 1;
+      if (p.stockMap && Object.keys(p.stockMap).length > 0) {
+        const key = (removed.color || '') + '|' + (removed.size || '');
+        p.stockMap[key] = (parseInt(p.stockMap[key]) || 0) + q;
+        p.stock = calcStockTotal(p.stockMap);
+      } else {
+        p.stock = (p.stock || 0) + q;
+      }
+    }
+    added.splice(aidx, 1);
+    setAddedItems(_addItemState.orderNo, added);
+    save('pos_products', products);
+    upsertOrderTx(order);
+  } else {
+    added.splice(aidx, 1);
+    setAddedItems(_addItemState.orderNo, added);
+  }
+  renderAddItemExisting();
+  renderOnlineOrders();
+  toast('↩ 已移除加品項', 'success');
 }
 
 // ★ v2.9.25 切換補款/退款處理狀態
