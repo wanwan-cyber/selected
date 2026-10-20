@@ -11715,6 +11715,21 @@ function setCancelledIdxs(orderNo, arr) {
 function getSwapMap(orderNo) {
   return (orderSwapItems[orderNo] && typeof orderSwapItems[orderNo] === 'object') ? orderSwapItems[orderNo] : {};
 }
+// ★ v2.9.36 剛改過的訂單保護期 — 避免 download race 把 local 覆蓋
+const __recentOrderChanges = { swaps: new Map(), added: new Map(), overrides: new Map() };
+const CHANGE_PROTECT_MS = 20000; // 20 秒內 download 不覆蓋 local
+function markRecentOrderChange(kind, orderNo) {
+  if (orderNo && __recentOrderChanges[kind]) __recentOrderChanges[kind].set(orderNo, Date.now());
+}
+function isRecentOrderChange(kind, orderNo) {
+  const map = __recentOrderChanges[kind];
+  if (!map) return false;
+  const t = map.get(orderNo);
+  if (!t) return false;
+  if (Date.now() - t > CHANGE_PROTECT_MS) { map.delete(orderNo); return false; }
+  return true;
+}
+
 function setSwapMap(orderNo, map) {
   if (map && Object.keys(map).length) orderSwapItems[orderNo] = map;
   else {
@@ -11724,6 +11739,7 @@ function setSwapMap(orderNo, map) {
     save('pos_order_swap_pay_status', orderSwapPayStatus);
   }
   save('pos_order_swap_items', orderSwapItems);
+  markRecentOrderChange('swaps', orderNo); // ★ v2.9.36
   // ★ v2.9.25 自動上傳雲端（含補退狀態）
   if (typeof uploadOrderSwap === 'function') uploadOrderSwap(orderNo);
 }
@@ -11736,6 +11752,7 @@ function setSwapPayStatus(orderNo, status) {
   if (status && status !== 'pending') orderSwapPayStatus[orderNo] = status;
   else delete orderSwapPayStatus[orderNo];
   save('pos_order_swap_pay_status', orderSwapPayStatus);
+  markRecentOrderChange('swaps', orderNo); // ★ v2.9.36
   if (typeof uploadOrderSwap === 'function') uploadOrderSwap(orderNo);
 }
 
@@ -11747,6 +11764,7 @@ function setAddedItems(orderNo, arr) {
   if (arr && arr.length) orderAddedItems[orderNo] = arr;
   else delete orderAddedItems[orderNo];
   save('pos_order_added_items', orderAddedItems);
+  markRecentOrderChange('added', orderNo); // ★ v2.9.36
   if (typeof uploadOrderAddedItems === 'function') uploadOrderAddedItems(orderNo);
 }
 
@@ -11812,6 +11830,7 @@ function setOrderWaiveShipping(orderNo, waive) {
     if (Object.keys(orderOverrides[orderNo]).length === 0) delete orderOverrides[orderNo];
   }
   save('pos_order_overrides', orderOverrides);
+  markRecentOrderChange('overrides', orderNo); // ★ v2.9.36
   if (typeof uploadOrderWaiveShipping === 'function') uploadOrderWaiveShipping(orderNo, waive);
 }
 async function uploadOrderWaiveShipping(orderNo, waive) {
@@ -11838,6 +11857,13 @@ async function loadOrderOverrides() {
     const waiveMap = (data.overrides && data.overrides.waiveShipping) || {};
     const next = {};
     Object.keys(waiveMap).forEach(ono => { next[ono] = { waiveShipping: true }; });
+    // ★ v2.9.36 保留剛改過的本地值
+    Object.keys(orderOverrides).forEach(ono => {
+      if (isRecentOrderChange('overrides', ono)) {
+        if (orderOverrides[ono] && orderOverrides[ono].waiveShipping) next[ono] = { waiveShipping: true };
+        else delete next[ono];
+      }
+    });
     orderOverrides = next;
     save('pos_order_overrides', orderOverrides);
     if (typeof renderOnlineOrders === 'function') try { renderOnlineOrders(); } catch(e) {}
@@ -11886,7 +11912,15 @@ async function loadOrderAddedItems() {
     const res = await fetch(appSettings.syncUrl + '?action=getOrderAddedItems&t=' + Date.now());
     const data = await res.json();
     if (!data.ok) return;
-    orderAddedItems = data.added || {};
+    const next = data.added || {};
+    // ★ v2.9.36 保留剛改過的本地值
+    Object.keys(orderAddedItems).forEach(ono => {
+      if (isRecentOrderChange('added', ono)) {
+        if (orderAddedItems[ono] && orderAddedItems[ono].length) next[ono] = orderAddedItems[ono];
+        else delete next[ono];
+      }
+    });
+    orderAddedItems = next;
     save('pos_order_added_items', orderAddedItems);
     if (typeof renderOnlineOrders === 'function') try { renderOnlineOrders(); } catch(e) {}
   } catch (err) { console.warn('loadOrderAddedItems 錯誤', err); }
@@ -11907,6 +11941,19 @@ async function loadOrderSwaps() {
       if (s && s.swapMap && Object.keys(s.swapMap).length > 0) {
         newItems[ono] = s.swapMap;
         if (s.paymentStatus && s.paymentStatus !== 'pending') newStatus[ono] = s.paymentStatus;
+      }
+    });
+    // ★ v2.9.36 剛改過的訂單 → 保留本地值，不要被雲端覆蓋（避免 race）
+    Object.keys(orderSwapItems).forEach(ono => {
+      if (isRecentOrderChange('swaps', ono)) {
+        if (orderSwapItems[ono]) newItems[ono] = orderSwapItems[ono];
+        else delete newItems[ono];
+      }
+    });
+    Object.keys(orderSwapPayStatus).forEach(ono => {
+      if (isRecentOrderChange('swaps', ono)) {
+        if (orderSwapPayStatus[ono]) newStatus[ono] = orderSwapPayStatus[ono];
+        else delete newStatus[ono];
       }
     });
     orderSwapItems = newItems;
