@@ -2214,6 +2214,22 @@
           <input type="file" id="import-data-file" accept=".json" style="display:none;" onchange="importAllData(event)">
         </div>
       </div>
+
+      <!-- 👗 搭配小劇場（v2.9.47） -->
+      <div class="variant-section">
+        <h4>👗 搭配小劇場（官網彩蛋）</h4>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.7;margin-bottom:10px;">
+          客人在官網選上衣/下身/外搭/配件來搭配，一鍵加入購物車。
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-outline btn-sm" onclick="openDressupStage()">🎭 打開試玩</button>
+          <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;background:var(--bg);border-radius:6px;">
+            <input type="checkbox" id="set-dressup-enabled" style="margin:0;" onchange="saveDressupEnabled(this.checked)">
+            <span>開放給客人（官網 Header 顯示 👗 按鈕）</span>
+          </label>
+        </div>
+        <div id="dressup-save-status" style="font-size:11px;color:var(--text-muted);margin-top:6px;"></div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('settings-modal')">取消</button>
@@ -7248,7 +7264,66 @@ function openSettingsModal() {
   updateCloudinaryStatus();
   refreshStorageInfo();
   updateSyncStatusInfo();
+  // ★ v2.9.47 載入搭配劇場狀態
+  loadDressupEnabledToUI();
   openModal('settings-modal');
+}
+
+// ★ v2.9.47 搭配小劇場（官網彩蛋）—— POS 控制
+const SHOP_URL = 'https://wanwan-cyber.github.io/shop/'; // 官網
+function openDressupStage() {
+  // 開新分頁打開搭配劇場（加 dev=1 讓按鈕也顯示 + 跳到 dressup 頁）
+  window.open(SHOP_URL + '?dev=1#/dressup', '_blank');
+}
+async function loadDressupEnabledToUI() {
+  const checkbox = document.getElementById('set-dressup-enabled');
+  if (!checkbox) return;
+  // 先用 localStorage 快取
+  const cached = localStorage.getItem('pos_dressup_enabled');
+  if (cached !== null) checkbox.checked = cached === '1';
+  // 再從雲端拉最新
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  try {
+    const res = await fetch(appSettings.syncUrl + '?action=getFeatureFlags&t=' + Date.now());
+    const data = await res.json();
+    if (data.ok && data.flags) {
+      checkbox.checked = !!data.flags.dressupEnabled;
+      localStorage.setItem('pos_dressup_enabled', data.flags.dressupEnabled ? '1' : '0');
+    }
+  } catch(e) {}
+}
+async function saveDressupEnabled(enabled) {
+  localStorage.setItem('pos_dressup_enabled', enabled ? '1' : '0');
+  const status = document.getElementById('dressup-save-status');
+  if (status) status.textContent = '儲存中...';
+  if (!appSettings.syncEnabled || !appSettings.syncUrl) {
+    if (status) status.textContent = '⚠ 請先設定雲端同步才能儲存到官網';
+    return;
+  }
+  try {
+    const res = await fetch(appSettings.syncUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'saveFeatureFlags', flags: { dressupEnabled: !!enabled } }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (status) {
+        status.textContent = enabled ? '✓ 已開放給客人（最多 10 分鐘後生效）' : '✓ 已關閉';
+        status.style.color = 'var(--success)';
+      }
+    } else {
+      if (status) {
+        status.textContent = '⚠ 儲存失敗：' + (data.error || '');
+        status.style.color = 'var(--danger)';
+      }
+    }
+  } catch(err) {
+    if (status) {
+      status.textContent = '⚠ 網路錯誤：' + err.message;
+      status.style.color = 'var(--danger)';
+    }
+  }
 }
 
 function updateCloudinaryStatus() {
@@ -11715,18 +11790,31 @@ function setCancelledIdxs(orderNo, arr) {
 function getSwapMap(orderNo) {
   return (orderSwapItems[orderNo] && typeof orderSwapItems[orderNo] === 'object') ? orderSwapItems[orderNo] : {};
 }
-// ★ v2.9.36 剛改過的訂單保護期 — 避免 download race 把 local 覆蓋
-const __recentOrderChanges = { swaps: new Map(), added: new Map(), overrides: new Map() };
-const CHANGE_PROTECT_MS = 20000; // 20 秒內 download 不覆蓋 local
+// ★ v2.9.36/37 剛改過的訂單保護期 — 避免 download race 把 local 覆蓋
+// ★ v2.9.37 存 localStorage，重整後也有效（60 秒）
+const CHANGE_PROTECT_MS = 60000;
+function _recentKey(kind) { return 'pos_recent_order_change_' + kind; }
+function _readRecent(kind) {
+  try { return JSON.parse(localStorage.getItem(_recentKey(kind)) || '{}'); } catch(e) { return {}; }
+}
+function _writeRecent(kind, map) {
+  try { localStorage.setItem(_recentKey(kind), JSON.stringify(map)); } catch(e) {}
+}
 function markRecentOrderChange(kind, orderNo) {
-  if (orderNo && __recentOrderChanges[kind]) __recentOrderChanges[kind].set(orderNo, Date.now());
+  if (!orderNo) return;
+  const map = _readRecent(kind);
+  map[orderNo] = Date.now();
+  _writeRecent(kind, map);
 }
 function isRecentOrderChange(kind, orderNo) {
-  const map = __recentOrderChanges[kind];
-  if (!map) return false;
-  const t = map.get(orderNo);
+  const map = _readRecent(kind);
+  const t = map[orderNo];
   if (!t) return false;
-  if (Date.now() - t > CHANGE_PROTECT_MS) { map.delete(orderNo); return false; }
+  if (Date.now() - t > CHANGE_PROTECT_MS) {
+    delete map[orderNo];
+    _writeRecent(kind, map);
+    return false;
+  }
   return true;
 }
 
@@ -11792,7 +11880,11 @@ function calcSwapDiff(order) {
 // ★ v2.9.25 上傳單筆訂單的替換資料到 Apps Script
 async function uploadOrderSwap(orderNo) {
   if (!appSettings.syncEnabled || !appSettings.syncUrl || !orderNo) return;
-  if (window.__isDownloadingSync) return; // 下載中不要反向上傳
+  // ★ v2.9.37 下載中：延後 800ms 重試，避免永遠不上傳
+  if (window.__isDownloadingSync) {
+    setTimeout(() => uploadOrderSwap(orderNo), 800);
+    return;
+  }
   try {
     const order = onlineOrders.find(o => o.orderNo === orderNo);
     const swapMap = getSwapMap(orderNo);
@@ -11811,9 +11903,13 @@ async function uploadOrderSwap(orderNo) {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!data.ok) console.warn('uploadOrderSwap 失敗', data.error);
+    if (!data.ok) {
+      console.warn('uploadOrderSwap 失敗', data.error);
+      if (typeof toast === 'function') toast('⚠ 替換狀態同步失敗：' + (data.error || ''), 'error');
+    }
   } catch (err) {
     console.warn('uploadOrderSwap 錯誤', err);
+    if (typeof toast === 'function') toast('⚠ 替換狀態同步失敗（網路？）', 'error');
   }
 }
 
@@ -11835,7 +11931,10 @@ function setOrderWaiveShipping(orderNo, waive) {
 }
 async function uploadOrderWaiveShipping(orderNo, waive) {
   if (!appSettings.syncEnabled || !appSettings.syncUrl || !orderNo) return;
-  if (window.__isDownloadingSync) return;
+  if (window.__isDownloadingSync) {
+    setTimeout(() => uploadOrderWaiveShipping(orderNo, waive), 800);
+    return;
+  }
   try {
     const res = await fetch(appSettings.syncUrl, {
       method: 'POST',
@@ -11843,9 +11942,13 @@ async function uploadOrderWaiveShipping(orderNo, waive) {
       body: JSON.stringify({ action: 'saveOrderWaiveShipping', orderNo: orderNo, waive: !!waive }),
     });
     const data = await res.json();
-    if (!data.ok) console.warn('uploadOrderWaiveShipping 失敗', data.error);
+    if (!data.ok) {
+      console.warn('uploadOrderWaiveShipping 失敗', data.error);
+      if (typeof toast === 'function') toast('⚠ 免運狀態同步失敗：' + (data.error || ''), 'error');
+    }
   } catch (err) {
     console.warn('uploadOrderWaiveShipping 錯誤', err);
+    if (typeof toast === 'function') toast('⚠ 免運狀態同步失敗（網路？）', 'error');
   }
 }
 async function loadOrderOverrides() {
@@ -11894,7 +11997,10 @@ function toggleOrderWaiveShipping(orderNo) {
 // ★ v2.9.27 上傳 / 下載 加品項
 async function uploadOrderAddedItems(orderNo) {
   if (!appSettings.syncEnabled || !appSettings.syncUrl || !orderNo) return;
-  if (window.__isDownloadingSync) return;
+  if (window.__isDownloadingSync) {
+    setTimeout(() => uploadOrderAddedItems(orderNo), 800);
+    return;
+  }
   try {
     const items = getAddedItems(orderNo);
     const res = await fetch(appSettings.syncUrl, {
@@ -11903,8 +12009,14 @@ async function uploadOrderAddedItems(orderNo) {
       body: JSON.stringify({ action: 'saveOrderAddedItems', orderNo: orderNo, items: items }),
     });
     const data = await res.json();
-    if (!data.ok) console.warn('uploadOrderAddedItems 失敗', data.error);
-  } catch (err) { console.warn('uploadOrderAddedItems 錯誤', err); }
+    if (!data.ok) {
+      console.warn('uploadOrderAddedItems 失敗', data.error);
+      if (typeof toast === 'function') toast('⚠ 加品項同步失敗：' + (data.error || ''), 'error');
+    }
+  } catch (err) {
+    console.warn('uploadOrderAddedItems 錯誤', err);
+    if (typeof toast === 'function') toast('⚠ 加品項同步失敗（網路？）', 'error');
+  }
 }
 async function loadOrderAddedItems() {
   if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
