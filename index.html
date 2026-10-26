@@ -975,6 +975,8 @@
     font-style: italic;
   }
 </style>
+<!-- 🏷 條碼產生器（JsBarcode）for 標籤列印 v2.9.50 -->
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -2238,6 +2240,59 @@
   </div>
 </div>
 
+<!-- 🏷 商品標籤列印 Modal (v2.9.50) -->
+<div class="modal-overlay" id="label-print-modal">
+  <div class="modal-card" style="max-width:680px;">
+    <div class="modal-head">
+      <h3>🏷 列印商品標籤</h3>
+      <button class="modal-close" onclick="closeModal('label-print-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- 商品切換清單 -->
+      <div id="label-print-list" style="margin-bottom:14px;"></div>
+
+      <!-- 標籤預覽 -->
+      <div style="padding:24px 16px;background:linear-gradient(135deg,#faf7f2,#f5efe3);border-radius:12px;text-align:center;border:1px dashed #d4c5a8;">
+        <canvas id="label-preview" style="background:#fff;max-width:100%;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.08);"></canvas>
+        <div style="margin-top:12px;font-size:11px;color:#8b7554;letter-spacing:.5px;">
+          📐 40 × 20 mm 標籤預覽（實際列印尺寸）
+        </div>
+      </div>
+
+      <!-- 選項 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-soft);font-weight:600;">每項印幾張</label>
+          <input id="label-copies" type="number" value="1" min="1" max="50"
+                 oninput="renderLabelPreview()"
+                 style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-top:4px;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-soft);font-weight:600;">條碼內容來源</label>
+          <select id="label-barcode-source" onchange="renderLabelPreview()"
+                  style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;margin-top:4px;">
+            <option value="auto">自動（barcode → SKU → 商品 ID）</option>
+            <option value="barcode">只用 barcode 欄位</option>
+            <option value="sku">只用 SKU 欄位</option>
+            <option value="id">只用商品 ID</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 使用說明 -->
+      <div style="margin-top:14px;padding:10px 12px;background:#fef8ea;border-radius:8px;border:1px solid #f0e0b8;font-size:11.5px;color:#8a6d2a;line-height:1.7;">
+        <b>💡 使用方式：</b>下載 PNG 後，打開精臣 app → 選「圖片」匯入 → 選擇 40×20mm 標籤 → 列印。<br>
+        <b>下個版本</b>會做藍牙直連，省掉這一步。
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('label-print-modal')">取消</button>
+      <button class="btn btn-outline" onclick="downloadCurrentLabelPng()">📥 下載此張</button>
+      <button class="btn btn-primary" onclick="downloadAllLabelPngs()">📥 全部下載</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI Caption Modal -->
 <div class="modal-overlay" id="caption-modal">
   <div class="modal" style="max-width:520px;">
@@ -2700,6 +2755,255 @@ function showPage(p, btn) {
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function openModal(id) { document.getElementById(id).classList.add('open'); }
+
+// ============================================================
+// 🏷 商品標籤列印 (v2.9.50)
+// 40×20mm @ 203 DPI = 320×160 px，為了 UI 清楚輸出 2× (640×320)
+// ============================================================
+const LABEL_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path d="M 50 86 C 20 68, 8 42, 22 24 C 32 14, 48 20, 50 35 C 52 20, 68 14, 78 24 C 92 42, 80 68, 50 86 Z"
+        fill="none" stroke="black" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="38" cy="48" r="3.6" fill="black"/>
+  <circle cx="62" cy="48" r="3.6" fill="black"/>
+  <path d="M 42 60 Q 50 68, 58 60" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>
+</svg>`;
+
+let labelPrintProducts = [];
+let labelPrintCurrentIdx = 0;
+let __labelLogoImg = null;
+
+async function loadLabelLogoImage() {
+  if (__labelLogoImg) return __labelLogoImg;
+  const blob = new Blob([LABEL_LOGO_SVG], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  await new Promise((resolve, reject) => {
+    img.onload = () => { URL.revokeObjectURL(url); resolve(); };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+  __labelLogoImg = img;
+  return img;
+}
+
+// 根據商品 + 選的來源決定條碼內容
+function getLabelBarcodeValue(p) {
+  const source = document.getElementById('label-barcode-source')?.value || 'auto';
+  if (source === 'barcode') return (p.barcode || '').trim();
+  if (source === 'sku')     return (p.sku || '').trim();
+  if (source === 'id')      return (p.id || '').toString().slice(-10);
+  // auto
+  return (p.barcode || p.sku || (p.id || '').toString().slice(-10)).trim();
+}
+
+// 文字自動斷行（最多 N 行，超過加 …）
+function wrapLabelText(ctx, text, maxWidth, maxLines) {
+  const chars = Array.from(text || '');
+  const lines = [];
+  let line = '';
+  for (const c of chars) {
+    const test = line + c;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = c;
+      if (lines.length >= maxLines) break;
+    } else {
+      line = test;
+    }
+  }
+  if (lines.length < maxLines && line) lines.push(line);
+  // 最後一行若超寬，截斷加 …
+  if (lines.length === maxLines) {
+    let last = lines[maxLines - 1];
+    const remaining = chars.slice(chars.join('').indexOf(last) + last.length).join('');
+    if (remaining) {
+      while (last.length > 0 && ctx.measureText(last + '…').width > maxWidth) {
+        last = last.slice(0, -1);
+      }
+      lines[maxLines - 1] = last + '…';
+    }
+  }
+  return lines;
+}
+
+async function drawLabel(canvas, product) {
+  const W = 640, H = 320;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  // 白底
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  // === 左側 Logo 區（約前 180px）===
+  try {
+    const logo = await loadLabelLogoImage();
+    const logoSize = 110;
+    const logoX = 30, logoY = 20;
+    ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
+    // "WanWan" 字樣
+    ctx.fillStyle = '#000';
+    ctx.font = '900 30px "Arial Black", "Helvetica Neue", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('WanWan', logoX + logoSize / 2, logoY + logoSize + 6);
+  } catch (e) {
+    console.warn('Label logo load failed', e);
+  }
+
+  // === 右上 商品名（200-620, 20-110）===
+  const nameX = 200;
+  const nameW = 420;
+  ctx.fillStyle = '#000';
+  ctx.font = '800 32px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  const nameLines = wrapLabelText(ctx, product.name || '(未命名)', nameW, 2);
+  nameLines.forEach((line, i) => ctx.fillText(line, nameX, 22 + i * 38));
+
+  // === 右中 價格（200-620, 115-200）大字 ===
+  const price = Number(product.price) || 0;
+  ctx.fillStyle = '#000';
+  ctx.font = '900 58px "Arial Black", "Helvetica Neue", Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`NT$${price}`, nameX, 118);
+
+  // === 底部 條碼（15-625, 210-310）===
+  const barcodeValue = getLabelBarcodeValue(product);
+  if (barcodeValue && typeof JsBarcode === 'function') {
+    try {
+      const bcCanvas = document.createElement('canvas');
+      JsBarcode(bcCanvas, String(barcodeValue), {
+        format: 'CODE128',
+        width: 2.4,
+        height: 70,
+        displayValue: true,
+        fontSize: 18,
+        textMargin: 2,
+        margin: 0,
+        background: '#fff',
+        lineColor: '#000',
+      });
+      // Scale to fit horizontally
+      const targetW = 610;
+      const targetH = 95;
+      ctx.drawImage(bcCanvas, 15, 210, targetW, targetH);
+    } catch (e) {
+      console.warn('Barcode generation failed', e);
+      ctx.fillStyle = '#999';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('(條碼產生失敗)', W / 2, 260);
+    }
+  } else {
+    ctx.fillStyle = '#999';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('(此商品無條碼/SKU，請先設定)', W / 2, 260);
+  }
+}
+
+// 打開列印標籤 modal
+function openLabelPrintModal(productIds) {
+  if (!Array.isArray(productIds) || productIds.length === 0) {
+    toast('請先選擇商品', 'warn');
+    return;
+  }
+  labelPrintProducts = productIds
+    .map(id => products.find(p => p.id === id))
+    .filter(Boolean);
+  if (!labelPrintProducts.length) { toast('找不到商品', 'warn'); return; }
+  labelPrintCurrentIdx = 0;
+  openModal('label-print-modal');
+  // Modal 開啟後再 render（canvas 要有 size）
+  setTimeout(renderLabelPreview, 50);
+}
+
+async function renderLabelPreview() {
+  // 商品清單
+  const listEl = document.getElementById('label-print-list');
+  if (!listEl) return;
+  listEl.innerHTML = `
+    <div style="font-size:12.5px;color:var(--text-soft);margin-bottom:8px;font-weight:600;">
+      ${labelPrintProducts.length > 1 ? `共 ${labelPrintProducts.length} 項商品，點切換預覽` : ''}
+    </div>
+    ${labelPrintProducts.length > 1 ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:92px;overflow-y:auto;padding:2px;">
+        ${labelPrintProducts.map((p, i) => `
+          <button onclick="selectLabelPreview(${i})"
+                  style="padding:5px 11px;border-radius:14px;border:1.5px solid ${i === labelPrintCurrentIdx ? 'var(--primary)' : '#d4c5a8'};background:${i === labelPrintCurrentIdx ? 'var(--primary)' : '#fff'};color:${i === labelPrintCurrentIdx ? '#fff' : '#5d4e36'};font-size:12px;font-weight:${i === labelPrintCurrentIdx ? 700 : 500};cursor:pointer;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;">
+            ${(p.name || '').slice(0, 10)}
+          </button>
+        `).join('')}
+      </div>
+    ` : ''}
+  `;
+  // 預覽畫布
+  const canvas = document.getElementById('label-preview');
+  if (!canvas) return;
+  await drawLabel(canvas, labelPrintProducts[labelPrintCurrentIdx]);
+}
+
+function selectLabelPreview(i) {
+  labelPrintCurrentIdx = i;
+  renderLabelPreview();
+}
+
+// 下載目前預覽的標籤
+async function downloadCurrentLabelPng() {
+  const p = labelPrintProducts[labelPrintCurrentIdx];
+  if (!p) return;
+  const canvas = document.createElement('canvas');
+  await drawLabel(canvas, p);
+  await new Promise(resolve => canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = (p.name || 'label').replace(/[\\/:*?"<>|]/g, '_').slice(0, 20);
+    a.download = `label_${safeName}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+    resolve();
+  }, 'image/png'));
+  toast('已下載 1 張標籤', 'ok');
+}
+
+// 全部下載（每項 × copies 張）
+async function downloadAllLabelPngs() {
+  const copies = Math.max(1, Math.min(50, parseInt(document.getElementById('label-copies').value) || 1));
+  const total = labelPrintProducts.length * copies;
+  if (total > 20) {
+    if (!confirm(`會下載 ${total} 張 PNG，瀏覽器可能提示允許多重下載。繼續？`)) return;
+  }
+  let count = 0;
+  for (const p of labelPrintProducts) {
+    for (let c = 1; c <= copies; c++) {
+      const canvas = document.createElement('canvas');
+      await drawLabel(canvas, p);
+      await new Promise(resolve => canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeName = (p.name || 'label').replace(/[\\/:*?"<>|]/g, '_').slice(0, 20);
+        a.download = labelPrintProducts.length > 1 || copies > 1
+          ? `label_${safeName}_${c}.png`
+          : `label_${safeName}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 500);
+        count++;
+        // 間隔避免瀏覽器擋
+        setTimeout(resolve, 180);
+      }, 'image/png'));
+    }
+  }
+  toast(`已下載 ${count} 張標籤`, 'ok');
+}
 function toast(msg, type='success') {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -3841,6 +4145,7 @@ function renderProductsTable() {
             ? `<button onclick="convertPreorderToRegular('${p.id}')" title="貨到了，轉為一般商品並輸入庫存" style="width:32px;height:32px;padding:0;background:#8B6F47;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">📦</button>`
             : `<button onclick="convertRegularToPreorder('${p.id}')" title="轉為預購商品（可接受預購不看庫存）" style="width:32px;height:32px;padding:0;background:#fff;color:#8B6F47;border:1px solid #8B6F47;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🎀</button>`}
           <button onclick="openProductModal('${p.id}')" title="編輯商品" style="width:32px;height:32px;padding:0;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">✏️</button>
+          <button onclick="openLabelPrintModal(['${p.id}'])" title="印標籤" style="width:32px;height:32px;padding:0;background:#fff;color:#8B6F47;border:1px solid #8B6F47;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🏷</button>
           <button onclick="deleteProduct('${p.id}')" title="刪除商品" style="width:32px;height:32px;padding:0;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🗑️</button>
         </div>
       </td>
@@ -4747,6 +5052,7 @@ function renderPmBulkBar() {
     <button onclick="pmBulkClearAll()" class="btn btn-outline btn-sm" style="font-size:12px;">清空</button>
     <button onclick="pmBulkApplyFeatured(true)" class="btn btn-sm" style="background:#c9a84c;color:#fff;border:none;font-weight:800;">⭐ 設為強推</button>
     <button onclick="pmBulkApplyFeatured(false)" class="btn btn-outline btn-sm" style="border-color:#c9a84c;color:#c9a84c;font-weight:700;">☆ 取消強推</button>
+    <button onclick="openLabelPrintModal(Array.from(pmBulkSelected))" class="btn btn-sm" style="background:#8B6F47;color:#fff;border:none;font-weight:800;">🏷 印標籤</button>
   `;
 }
 
@@ -6886,7 +7192,13 @@ function renderModelPhotos() {
           <select onchange="updateModelPhoto(${i}, 'bodyType', this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:#fff;">
             ${bodyOptions}
           </select>
-          <input type="text" value="${escapeHtml(m.note || '')}" oninput="updateModelPhoto(${i}, 'note', this.value)" maxlength="30" placeholder="備註（身高/體重/尺碼）" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
+          <!-- ★ v2.9.49 身高/體重/尺碼 結構化欄位 -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+            <input type="number" min="100" max="220" value="${m.height || ''}" oninput="updateModelPhoto(${i}, 'height', parseInt(this.value)||0)" placeholder="身高cm" style="padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;" title="身高（公分）">
+            <input type="number" min="30" max="150" value="${m.weight || ''}" oninput="updateModelPhoto(${i}, 'weight', parseInt(this.value)||0)" placeholder="體重kg" style="padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;" title="體重（公斤）">
+            <input type="text" value="${escapeHtml(m.wearSize || '')}" oninput="updateModelPhoto(${i}, 'wearSize', this.value)" maxlength="4" placeholder="穿尺碼" style="padding:5px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:center;" title="穿的尺碼（S/M/L/F）">
+          </div>
+          <input type="text" value="${escapeHtml(m.note || '')}" oninput="updateModelPhoto(${i}, 'note', this.value)" maxlength="30" placeholder="其他備註（選填）" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
           ${i > 0 ? `<button type="button" onclick="moveModelPhoto(${i}, -1)" title="上移" style="background:transparent;border:1px solid var(--border);color:var(--text-soft);padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;">▲</button>` : `<div style="height:22px;"></div>`}
