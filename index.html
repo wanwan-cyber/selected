@@ -974,6 +974,41 @@
     margin-top: 8px;
     font-style: italic;
   }
+
+  /* 🏷 標籤版面編輯 overlay (v2.9.51) */
+  .label-edit-el {
+    position: absolute;
+    border: 2px dashed #c9a84c;
+    background: rgba(201, 168, 76, 0.08);
+    cursor: move;
+    box-sizing: border-box;
+    border-radius: 4px;
+    transition: background .15s;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .label-edit-el:hover,
+  .label-edit-el:active {
+    background: rgba(201, 168, 76, 0.22);
+    border-color: #8B6F47;
+  }
+  .label-edit-el::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #8B6F47;
+    background: #fff;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+    pointer-events: none;
+    font-weight: 700;
+  }
 </style>
 <!-- 🏷 條碼產生器（JsBarcode）for 標籤列印 v2.9.50 -->
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
@@ -2253,7 +2288,10 @@
 
       <!-- 標籤預覽 -->
       <div style="padding:24px 16px;background:linear-gradient(135deg,#faf7f2,#f5efe3);border-radius:12px;text-align:center;border:1px dashed #d4c5a8;">
-        <canvas id="label-preview" style="background:#fff;max-width:100%;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.08);"></canvas>
+        <div id="label-preview-wrap" style="position:relative;display:inline-block;max-width:100%;">
+          <canvas id="label-preview" style="background:#fff;max-width:100%;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.08);display:block;"></canvas>
+          <div id="label-edit-overlay" style="position:absolute;left:0;top:0;display:none;"></div>
+        </div>
         <div style="margin-top:12px;font-size:11px;color:#8b7554;letter-spacing:.5px;">
           📐 40 × 20 mm 標籤預覽（實際列印尺寸）
         </div>
@@ -2279,16 +2317,47 @@
         </div>
       </div>
 
+      <!-- 🖨 藍牙直連列印 (v2.9.52) -->
+      <div style="margin-top:14px;padding:12px 14px;background:linear-gradient(135deg,#f0f6ff,#e8f0ff);border-radius:10px;border:1px solid #c8d8f5;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          <div style="font-size:13px;font-weight:800;color:#2a4a85;">🖨 精臣 B1 藍牙直連</div>
+          <div id="bt-status" style="font-size:12px;"><span style="color:#c9a84c;">○ 未連線</span></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+          <button class="btn btn-sm" id="bt-connect-btn" onclick="btToggleConnect()"
+                  style="background:#5B8ECD;color:#fff;border:none;font-weight:700;">🔵 連接藍牙</button>
+          <button class="btn btn-sm" id="bt-print-btn" onclick="btPrintCurrent()" disabled
+                  style="background:#2a4a85;color:#fff;border:none;font-weight:700;opacity:.5;cursor:not-allowed;">🖨 印此張</button>
+          <button class="btn btn-outline btn-sm" onclick="btPrintAll()"
+                  style="border-color:#2a4a85;color:#2a4a85;font-weight:700;">🖨 印全部</button>
+          <label style="font-size:11.5px;color:#5a7fa8;display:flex;align-items:center;gap:4px;">
+            濃度
+            <select id="bt-density" style="padding:3px 6px;border:1px solid #c8d8f5;border-radius:4px;font-size:12px;">
+              <option value="1">1 淡</option>
+              <option value="2">2</option>
+              <option value="3" selected>3 中</option>
+              <option value="4">4</option>
+              <option value="5">5 深</option>
+            </select>
+          </label>
+        </div>
+        <details style="font-size:11px;">
+          <summary style="cursor:pointer;color:#5a7fa8;user-select:none;">▼ 連線 Log（Debug 用）</summary>
+          <pre id="bt-log" style="margin-top:6px;padding:8px;background:#1a2338;color:#9fd8f5;font-size:10.5px;line-height:1.5;border-radius:4px;max-height:160px;overflow-y:auto;font-family:'Monaco','Menlo','Consolas',monospace;white-space:pre-wrap;">(連線後會顯示協議封包)</pre>
+        </details>
+      </div>
+
       <!-- 使用說明 -->
-      <div style="margin-top:14px;padding:10px 12px;background:#fef8ea;border-radius:8px;border:1px solid #f0e0b8;font-size:11.5px;color:#8a6d2a;line-height:1.7;">
-        <b>💡 使用方式：</b>下載 PNG 後，打開精臣 app → 選「圖片」匯入 → 選擇 40×20mm 標籤 → 列印。<br>
-        <b>下個版本</b>會做藍牙直連，省掉這一步。
+      <div style="margin-top:10px;padding:8px 12px;background:#fef8ea;border-radius:8px;border:1px solid #f0e0b8;font-size:11px;color:#8a6d2a;line-height:1.7;">
+        <b>💡 兩種列印方式：</b><br>
+        1. <b>藍牙直連（上方）</b>：Chrome 直接送到印表機，不用切換 app<br>
+        2. <b>下載 PNG（下方）</b>：精臣 app 匯入圖片列印，備用方案
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('label-print-modal')">取消</button>
       <button class="btn btn-outline" onclick="downloadCurrentLabelPng()">📥 下載此張</button>
-      <button class="btn btn-primary" onclick="downloadAllLabelPngs()">📥 全部下載</button>
+      <button class="btn btn-outline" onclick="downloadAllLabelPngs()">📥 全部下載</button>
     </div>
   </div>
 </div>
@@ -2757,34 +2826,24 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 
 // ============================================================
-// 🏷 商品標籤列印 (v2.9.50)
+// 🏷 商品標籤列印 (v2.9.50 → v2.9.51 可拖拉版面)
 // 40×20mm @ 203 DPI = 320×160 px，為了 UI 清楚輸出 2× (640×320)
 // ============================================================
-const LABEL_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <path d="M 50 86 C 20 68, 8 42, 22 24 C 32 14, 48 20, 50 35 C 52 20, 68 14, 78 24 C 92 42, 80 68, 50 86 Z"
-        fill="none" stroke="black" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
-  <circle cx="38" cy="48" r="3.6" fill="black"/>
-  <circle cx="62" cy="48" r="3.6" fill="black"/>
-  <path d="M 42 60 Q 50 68, 58 60" fill="none" stroke="black" stroke-width="3" stroke-linecap="round"/>
-</svg>`;
-
+// 預設版面（canvas 內部座標）
+const DEFAULT_LABEL_LAYOUT = {
+  logo:    { x: 20,  y: 55,  w: 170, h: 100 },  // WanWan Selected 文字區
+  name:    { x: 200, y: 15,  w: 425, h: 92  },  // 商品名
+  price:   { x: 200, y: 110, w: 425, h: 72  },  // 價格
+  barcode: { x: 15,  y: 210, w: 610, h: 100 },  // 條碼
+};
+let LABEL_LAYOUT = load('pos_label_layout', JSON.parse(JSON.stringify(DEFAULT_LABEL_LAYOUT)));
+// 補齊可能缺的 key（例如升級後新增欄位）
+Object.keys(DEFAULT_LABEL_LAYOUT).forEach(k => {
+  if (!LABEL_LAYOUT[k]) LABEL_LAYOUT[k] = { ...DEFAULT_LABEL_LAYOUT[k] };
+});
 let labelPrintProducts = [];
 let labelPrintCurrentIdx = 0;
-let __labelLogoImg = null;
-
-async function loadLabelLogoImage() {
-  if (__labelLogoImg) return __labelLogoImg;
-  const blob = new Blob([LABEL_LOGO_SVG], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const img = new Image();
-  await new Promise((resolve, reject) => {
-    img.onload = () => { URL.revokeObjectURL(url); resolve(); };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
-    img.src = url;
-  });
-  __labelLogoImg = img;
-  return img;
-}
+let labelEditMode = false;
 
 // 根據商品 + 選的來源決定條碼內容
 function getLabelBarcodeValue(p) {
@@ -2836,72 +2895,81 @@ async function drawLabel(canvas, product) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, W, H);
 
-  // === 左側 Logo 區（約前 180px）===
-  try {
-    const logo = await loadLabelLogoImage();
-    const logoSize = 110;
-    const logoX = 30, logoY = 20;
-    ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-    // "WanWan" 字樣
+  // === Logo 區：WanWan Selected 純文字 ===
+  {
+    const L = LABEL_LAYOUT.logo;
     ctx.fillStyle = '#000';
-    ctx.font = '900 30px "Arial Black", "Helvetica Neue", Arial, sans-serif';
-    ctx.textAlign = 'center';
+    // "WanWan" 大字 Serif Bold
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText('WanWan', logoX + logoSize / 2, logoY + logoSize + 6);
-  } catch (e) {
-    console.warn('Label logo load failed', e);
+    // 依區塊高度動態調整字體大小
+    const fs1 = Math.round(L.h * 0.38); // ~40 for h=100
+    const fs2 = Math.round(L.h * 0.26); // ~26 for h=100
+    ctx.font = `900 ${fs1}px "Georgia", "Times New Roman", serif`;
+    ctx.fillText('WanWan', L.x, L.y);
+    // 底線分隔
+    const lineY = L.y + fs1 + 4;
+    ctx.fillRect(L.x + 4, lineY, L.w - 20, 2);
+    // "Selected" 小字
+    ctx.font = `700 ${fs2}px "Georgia", "Times New Roman", serif`;
+    ctx.fillText('Selected', L.x + 8, lineY + 6);
   }
 
-  // === 右上 商品名（200-620, 20-110）===
-  const nameX = 200;
-  const nameW = 420;
-  ctx.fillStyle = '#000';
-  ctx.font = '800 32px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  const nameLines = wrapLabelText(ctx, product.name || '(未命名)', nameW, 2);
-  nameLines.forEach((line, i) => ctx.fillText(line, nameX, 22 + i * 38));
+  // === 商品名 ===
+  {
+    const L = LABEL_LAYOUT.name;
+    ctx.fillStyle = '#000';
+    const fs = Math.round(L.h * 0.35); // ~32 for h=92
+    ctx.font = `800 ${fs}px "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const maxLines = Math.max(1, Math.floor(L.h / (fs * 1.2)));
+    const nameLines = wrapLabelText(ctx, product.name || '(未命名)', L.w, maxLines);
+    nameLines.forEach((line, i) => ctx.fillText(line, L.x, L.y + i * (fs * 1.2)));
+  }
 
-  // === 右中 價格（200-620, 115-200）大字 ===
-  const price = Number(product.price) || 0;
-  ctx.fillStyle = '#000';
-  ctx.font = '900 58px "Arial Black", "Helvetica Neue", Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(`NT$${price}`, nameX, 118);
+  // === 價格 ===
+  {
+    const L = LABEL_LAYOUT.price;
+    const price = Number(product.price) || 0;
+    ctx.fillStyle = '#000';
+    const fs = Math.round(L.h * 0.78); // ~58 for h=72
+    ctx.font = `900 ${fs}px "Arial Black", "Helvetica Neue", Arial, sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`NT$${price}`, L.x, L.y);
+  }
 
-  // === 底部 條碼（15-625, 210-310）===
-  const barcodeValue = getLabelBarcodeValue(product);
-  if (barcodeValue && typeof JsBarcode === 'function') {
-    try {
-      const bcCanvas = document.createElement('canvas');
-      JsBarcode(bcCanvas, String(barcodeValue), {
-        format: 'CODE128',
-        width: 2.4,
-        height: 70,
-        displayValue: true,
-        fontSize: 18,
-        textMargin: 2,
-        margin: 0,
-        background: '#fff',
-        lineColor: '#000',
-      });
-      // Scale to fit horizontally
-      const targetW = 610;
-      const targetH = 95;
-      ctx.drawImage(bcCanvas, 15, 210, targetW, targetH);
-    } catch (e) {
-      console.warn('Barcode generation failed', e);
+  // === 條碼 ===
+  {
+    const L = LABEL_LAYOUT.barcode;
+    const barcodeValue = getLabelBarcodeValue(product);
+    if (barcodeValue && typeof JsBarcode === 'function') {
+      try {
+        const bcCanvas = document.createElement('canvas');
+        JsBarcode(bcCanvas, String(barcodeValue), {
+          format: 'CODE128',
+          width: 2.4,
+          height: 85,
+          displayValue: false,
+          margin: 0,
+          background: '#fff',
+          lineColor: '#000',
+        });
+        ctx.drawImage(bcCanvas, L.x, L.y, L.w, L.h);
+      } catch (e) {
+        console.warn('Barcode generation failed', e);
+        ctx.fillStyle = '#999';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('(條碼產生失敗)', L.x + L.w / 2, L.y + L.h / 2);
+      }
+    } else {
       ctx.fillStyle = '#999';
       ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('(條碼產生失敗)', W / 2, 260);
+      ctx.fillText('(此商品無條碼/SKU，請先設定)', L.x + L.w / 2, L.y + L.h / 2);
     }
-  } else {
-    ctx.fillStyle = '#999';
-    ctx.font = '14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('(此商品無條碼/SKU，請先設定)', W / 2, 260);
   }
 }
 
@@ -2916,9 +2984,17 @@ function openLabelPrintModal(productIds) {
     .filter(Boolean);
   if (!labelPrintProducts.length) { toast('找不到商品', 'warn'); return; }
   labelPrintCurrentIdx = 0;
+  labelEditMode = false; // 每次重開 modal 預設不是編輯模式
   openModal('label-print-modal');
   // Modal 開啟後再 render（canvas 要有 size）
-  setTimeout(renderLabelPreview, 50);
+  setTimeout(() => {
+    renderLabelPreview();
+    updateBtStatus();
+    // 清空舊的 log
+    btLogLines = [];
+    const el = document.getElementById('bt-log');
+    if (el) el.textContent = '(連線後會顯示協議封包)';
+  }, 50);
 }
 
 async function renderLabelPreview() {
@@ -2926,8 +3002,15 @@ async function renderLabelPreview() {
   const listEl = document.getElementById('label-print-list');
   if (!listEl) return;
   listEl.innerHTML = `
-    <div style="font-size:12.5px;color:var(--text-soft);margin-bottom:8px;font-weight:600;">
-      ${labelPrintProducts.length > 1 ? `共 ${labelPrintProducts.length} 項商品，點切換預覽` : ''}
+    <div style="font-size:12.5px;color:var(--text-soft);margin-bottom:8px;font-weight:600;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <span>${labelPrintProducts.length > 1 ? `共 ${labelPrintProducts.length} 項商品，點切換預覽` : ''}</span>
+      <div style="display:flex;gap:6px;">
+        <button onclick="toggleLabelEditMode()" id="label-edit-toggle-btn"
+                style="padding:5px 12px;border-radius:12px;border:1.5px solid ${labelEditMode ? '#c9a84c' : '#8B6F47'};background:${labelEditMode ? '#c9a84c' : '#fff'};color:${labelEditMode ? '#fff' : '#8B6F47'};font-size:12px;font-weight:700;cursor:pointer;">
+          ${labelEditMode ? '✓ 完成' : '🎨 編輯版型'}
+        </button>
+        ${labelEditMode ? `<button onclick="resetLabelLayout()" style="padding:5px 10px;border-radius:12px;border:1.5px solid #d4c5a8;background:#fff;color:#8B6F47;font-size:12px;font-weight:600;cursor:pointer;">↻ 重設</button>` : ''}
+      </div>
     </div>
     ${labelPrintProducts.length > 1 ? `
       <div style="display:flex;gap:6px;flex-wrap:wrap;max-height:92px;overflow-y:auto;padding:2px;">
@@ -2939,16 +3022,115 @@ async function renderLabelPreview() {
         `).join('')}
       </div>
     ` : ''}
+    ${labelEditMode ? `
+      <div style="margin-top:8px;padding:8px 12px;background:#fef8ea;border:1px solid #f0e0b8;border-radius:8px;font-size:11.5px;color:#8a6d2a;line-height:1.6;">
+        💡 直接<b>拖拉</b>四個虛線框調整位置：Logo／商品名／價格／條碼。設定會自動儲存給之後所有商品用。
+      </div>
+    ` : ''}
   `;
   // 預覽畫布
   const canvas = document.getElementById('label-preview');
   if (!canvas) return;
   await drawLabel(canvas, labelPrintProducts[labelPrintCurrentIdx]);
+  // 編輯模式：同步 overlay；非編輯模式：隱藏 overlay
+  const overlay = document.getElementById('label-edit-overlay');
+  if (labelEditMode) {
+    renderLabelEditOverlay();
+  } else if (overlay) {
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+  }
 }
 
 function selectLabelPreview(i) {
   labelPrintCurrentIdx = i;
   renderLabelPreview();
+}
+
+// === 版面編輯模式 ===
+function toggleLabelEditMode() {
+  labelEditMode = !labelEditMode;
+  if (!labelEditMode) {
+    // 離開編輯模式 → 儲存位置到 localStorage
+    save('pos_label_layout', LABEL_LAYOUT);
+    toast('版型已儲存', 'ok');
+  }
+  renderLabelPreview();
+}
+
+function resetLabelLayout() {
+  if (!confirm('重設所有元素回預設位置？')) return;
+  LABEL_LAYOUT = JSON.parse(JSON.stringify(DEFAULT_LABEL_LAYOUT));
+  renderLabelPreview();
+}
+
+function renderLabelEditOverlay() {
+  const canvas = document.getElementById('label-preview');
+  const overlay = document.getElementById('label-edit-overlay');
+  if (!canvas || !overlay) return;
+  const rect = canvas.getBoundingClientRect();
+  overlay.style.width = rect.width + 'px';
+  overlay.style.height = rect.height + 'px';
+  overlay.style.display = 'block';
+  const sx = rect.width / canvas.width;
+  const sy = rect.height / canvas.height;
+  const labels = { logo: 'Logo', name: '商品名', price: '價格', barcode: '條碼' };
+  overlay.innerHTML = Object.keys(LABEL_LAYOUT).map(key => {
+    const L = LABEL_LAYOUT[key];
+    return `
+      <div class="label-edit-el" data-key="${key}" data-label="${labels[key]}"
+           style="left:${L.x * sx}px;top:${L.y * sy}px;width:${L.w * sx}px;height:${L.h * sy}px;">
+      </div>
+    `;
+  }).join('');
+  overlay.querySelectorAll('.label-edit-el').forEach(el => {
+    makeLabelElDraggable(el, el.dataset.key);
+  });
+}
+
+function makeLabelElDraggable(el, key) {
+  const start = (e) => {
+    e.preventDefault();
+    const touch = e.touches ? e.touches[0] : e;
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const canvas = document.getElementById('label-preview');
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width;   // display → canvas 座標
+    const sy = canvas.height / rect.height;
+    const origX = LABEL_LAYOUT[key].x;
+    const origY = LABEL_LAYOUT[key].y;
+
+    const move = (ev) => {
+      ev.preventDefault();
+      const t = ev.touches ? ev.touches[0] : ev;
+      const dx = (t.clientX - startX) * sx;
+      const dy = (t.clientY - startY) * sy;
+      // 限制在 canvas 範圍內
+      const maxX = canvas.width - LABEL_LAYOUT[key].w;
+      const maxY = canvas.height - LABEL_LAYOUT[key].h;
+      LABEL_LAYOUT[key].x = Math.max(0, Math.min(maxX, origX + dx));
+      LABEL_LAYOUT[key].y = Math.max(0, Math.min(maxY, origY + dy));
+      // 即時更新 overlay 位置 + 重畫 canvas
+      const invSx = rect.width / canvas.width;
+      const invSy = rect.height / canvas.height;
+      el.style.left = (LABEL_LAYOUT[key].x * invSx) + 'px';
+      el.style.top  = (LABEL_LAYOUT[key].y * invSy) + 'px';
+      drawLabel(canvas, labelPrintProducts[labelPrintCurrentIdx]);
+    };
+    const end = () => {
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', end);
+      document.removeEventListener('touchmove', move);
+      document.removeEventListener('touchend', end);
+    };
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
+    document.addEventListener('touchmove', move, { passive: false });
+    document.addEventListener('touchend', end);
+  };
+  el.addEventListener('mousedown', start);
+  el.addEventListener('touchstart', start, { passive: false });
 }
 
 // 下載目前預覽的標籤
@@ -3004,6 +3186,355 @@ async function downloadAllLabelPngs() {
   }
   toast(`已下載 ${count} 張標籤`, 'ok');
 }
+
+// ============================================================
+// 🖨 精臣 B1 藍牙直連列印 (v2.9.52)
+// 協議參考: niimblue / niimbluelib (MultiMote)
+// Service UUID: 49535343-fe7d-4ae5-8fa9-9fafd205e455
+// ============================================================
+const NIIMBOT_SERVICE_UUID = '49535343-fe7d-4ae5-8fa9-9fafd205e455';
+const NIIMBOT_WRITE_UUID   = '49535343-8841-43f4-a8d4-ecbe34729bb3';
+const NIIMBOT_NOTIFY_UUID  = '49535343-1e4d-4bd9-ba61-23c647249616';
+
+class NiimbotPrinter {
+  constructor() {
+    this.device = null;
+    this.server = null;
+    this.writeChar = null;
+    this.notifyChar = null;
+    this.rxBuf = [];
+    this.waiters = [];
+    this.connected = false;
+    this.onLog = null;        // (msg) → 顯示在 UI
+    this.onDisconnect = null; // () → UI 更新
+  }
+
+  log(msg) {
+    console.log('[Niimbot]', msg);
+    if (this.onLog) try { this.onLog(msg); } catch(e) {}
+  }
+
+  async connect() {
+    if (!navigator.bluetooth) {
+      throw new Error('此瀏覽器不支援 Web Bluetooth。請用 Mac/Windows/Linux 的 Chrome 或 Edge。');
+    }
+    this.log('請求選擇藍牙裝置...');
+    this.device = await navigator.bluetooth.requestDevice({
+      filters: [
+        { namePrefix: 'B1' },
+        { namePrefix: 'B18' },
+        { namePrefix: 'B21' },
+        { namePrefix: 'D11' },
+        { namePrefix: 'D110' },
+        { namePrefix: 'NIIMBOT' },
+      ],
+      optionalServices: [NIIMBOT_SERVICE_UUID],
+    });
+    this.log(`已選: ${this.device.name || '(未命名)'}`);
+    this.device.addEventListener('gattserverdisconnected', () => {
+      this.connected = false;
+      this.log('印表機斷線');
+      if (this.onDisconnect) try { this.onDisconnect(); } catch(e) {}
+    });
+    this.log('連接 GATT server...');
+    this.server = await this.device.gatt.connect();
+    this.log('取得服務...');
+    const service = await this.server.getPrimaryService(NIIMBOT_SERVICE_UUID);
+    const chars = await service.getCharacteristics();
+    this.log(`characteristics: ${chars.map(c => c.uuid.slice(0,8) + '…').join(', ')}`);
+    this.writeChar = chars.find(c => c.uuid.toLowerCase() === NIIMBOT_WRITE_UUID)
+                  || chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+    this.notifyChar = chars.find(c => c.uuid.toLowerCase() === NIIMBOT_NOTIFY_UUID)
+                  || chars.find(c => c.properties.notify || c.properties.indicate);
+    if (!this.writeChar || !this.notifyChar) {
+      throw new Error('找不到預期 characteristic');
+    }
+    await this.notifyChar.startNotifications();
+    this.notifyChar.addEventListener('characteristicvaluechanged', (e) => {
+      const data = new Uint8Array(e.target.value.buffer);
+      this.onData(data);
+    });
+    this.connected = true;
+    this.log('✓ 已連線');
+    return true;
+  }
+
+  disconnect() {
+    if (this.device?.gatt?.connected) this.device.gatt.disconnect();
+    this.connected = false;
+  }
+
+  onData(data) {
+    const hex = Array.from(data).map(b => b.toString(16).padStart(2,'0')).join(' ');
+    this.log('← ' + hex);
+    for (const b of data) this.rxBuf.push(b);
+    this.parseBuffer();
+  }
+
+  parseBuffer() {
+    while (this.rxBuf.length >= 7) {
+      // 找 0x55 0x55
+      let start = -1;
+      for (let i = 0; i < this.rxBuf.length - 1; i++) {
+        if (this.rxBuf[i] === 0x55 && this.rxBuf[i+1] === 0x55) { start = i; break; }
+      }
+      if (start < 0) { this.rxBuf = []; return; }
+      if (start > 0) this.rxBuf.splice(0, start);
+      if (this.rxBuf.length < 7) return;
+      const cmd = this.rxBuf[2];
+      const len = this.rxBuf[3];
+      const total = 4 + len + 1 + 2;
+      if (this.rxBuf.length < total) return;
+      const payload = this.rxBuf.slice(4, 4 + len);
+      this.rxBuf.splice(0, total);
+      // Resolve waiters
+      for (let i = this.waiters.length - 1; i >= 0; i--) {
+        const w = this.waiters[i];
+        if (w.cmd === cmd) {
+          this.waiters.splice(i, 1);
+          clearTimeout(w.timer);
+          w.resolve(new Uint8Array(payload));
+        }
+      }
+    }
+  }
+
+  async sendPacket(cmd, data = []) {
+    const payload = Array.from(data);
+    const pkt = new Uint8Array(2 + 1 + 1 + payload.length + 1 + 2);
+    pkt[0] = 0x55; pkt[1] = 0x55;
+    pkt[2] = cmd;
+    pkt[3] = payload.length;
+    for (let i = 0; i < payload.length; i++) pkt[4 + i] = payload[i];
+    let chk = cmd ^ payload.length;
+    for (const b of payload) chk ^= b;
+    pkt[4 + payload.length] = chk;
+    pkt[5 + payload.length] = 0xAA;
+    pkt[6 + payload.length] = 0xAA;
+    // 短 packet 顯示 hex
+    if (pkt.length < 24) {
+      this.log('→ ' + Array.from(pkt).map(b => b.toString(16).padStart(2,'0')).join(' '));
+    }
+    try {
+      if (this.writeChar.properties.writeWithoutResponse) {
+        await this.writeChar.writeValueWithoutResponse(pkt);
+      } else {
+        await this.writeChar.writeValue(pkt);
+      }
+    } catch (e) {
+      await this.writeChar.writeValue(pkt);
+    }
+  }
+
+  // Canvas → 1-bit bitmap rows
+  canvasToBitmap(canvas) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const px = imageData.data;
+    const bpr = Math.ceil(w / 8);
+    const rows = [];
+    for (let y = 0; y < h; y++) {
+      const row = new Uint8Array(bpr);
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const gray = px[i] * 0.299 + px[i+1] * 0.587 + px[i+2] * 0.114;
+        if (gray < 128) {
+          row[Math.floor(x / 8)] |= (1 << (7 - (x % 8)));
+        }
+      }
+      rows.push(row);
+    }
+    return { width: w, height: h, rows };
+  }
+
+  // 計算一行三段的 "1" bit 數量（Niimbot 需要）
+  countBits3(row) {
+    const third = Math.floor(row.length / 3);
+    let c1=0, c2=0, c3=0;
+    for (let i=0; i<row.length; i++) {
+      let x = row[i], cnt = 0;
+      while (x) { cnt += x & 1; x >>>= 1; }
+      if (i < third) c1 += cnt;
+      else if (i < 2*third) c2 += cnt;
+      else c3 += cnt;
+    }
+    return [c1, c2, c3];
+  }
+
+  sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async print(canvas, copies = 1, density = 3) {
+    if (!this.connected) throw new Error('印表機未連線');
+    this.log(`開始列印 (${copies} 份, 密度 ${density})`);
+    const bmp = this.canvasToBitmap(canvas);
+    this.log(`bitmap: ${bmp.width}×${bmp.height}, ${bmp.rows[0].length} bytes/row`);
+
+    // 1. 設定密度
+    await this.sendPacket(0x21, [density]);
+    await this.sleep(60);
+
+    // 2. 設定紙張類型 (1 = gap/間隙紙, 2 = black mark, 3 = continuous)
+    await this.sendPacket(0x23, [1]);
+    await this.sleep(60);
+
+    // 3. 開始列印任務 (0x01, total pages)
+    await this.sendPacket(0x01, [1]);
+    await this.sleep(60);
+
+    // 4. Print clear
+    await this.sendPacket(0x20, [1]);
+    await this.sleep(60);
+
+    // 5. 設定紙張尺寸：height(BE 16) + width(BE 16)
+    const w = bmp.width, h = bmp.height;
+    await this.sendPacket(0x13, [
+      (h >> 8) & 0xFF, h & 0xFF,
+      (w >> 8) & 0xFF, w & 0xFF,
+    ]);
+    await this.sleep(60);
+
+    // 6. 設定數量
+    await this.sendPacket(0x15, [
+      (copies >> 8) & 0xFF, copies & 0xFF,
+    ]);
+    await this.sleep(60);
+
+    // 7. 開始頁面 (0x03)
+    await this.sendPacket(0x03, [1]);
+    await this.sleep(80);
+
+    // 8. 送 bitmap 每行
+    this.log(`送出 ${bmp.rows.length} 行 bitmap...`);
+    for (let y = 0; y < bmp.rows.length; y++) {
+      const row = bmp.rows[y];
+      const empty = row.every(b => b === 0);
+      if (empty) {
+        // 空行 0x84
+        await this.sendPacket(0x84, [
+          (y >> 8) & 0xFF, y & 0xFF,
+          0, 0, 0, 1,
+        ]);
+      } else {
+        const [c1, c2, c3] = this.countBits3(row);
+        // 0x85 = bitmap row
+        const data = [
+          (y >> 8) & 0xFF, y & 0xFF,
+          c1 & 0xFF, c2 & 0xFF, c3 & 0xFF,
+          1, // repeat
+          ...row,
+        ];
+        await this.sendPacket(0x85, data);
+      }
+      // 讓 BLE buffer 不堵塞
+      if (y % 8 === 7) await this.sleep(10);
+    }
+    await this.sleep(200);
+
+    // 9. 結束頁面 (0xE3)
+    await this.sendPacket(0xE3, [1]);
+    await this.sleep(300);
+
+    // 10. 結束列印 (0xF3)
+    await this.sendPacket(0xF3, [1]);
+    this.log('✓ 列印完成');
+  }
+}
+
+// === 單例 ===
+const niimbotPrinter = new NiimbotPrinter();
+
+// ======= 標籤 Modal 的藍牙列印 UI =======
+let btLogLines = [];
+function btAppendLog(msg) {
+  const line = `[${new Date().toLocaleTimeString('zh-TW',{hour12:false})}] ${msg}`;
+  btLogLines.push(line);
+  if (btLogLines.length > 50) btLogLines.shift();
+  const el = document.getElementById('bt-log');
+  if (el) {
+    el.textContent = btLogLines.join('\n');
+    el.scrollTop = el.scrollHeight;
+  }
+}
+niimbotPrinter.onLog = btAppendLog;
+niimbotPrinter.onDisconnect = () => {
+  updateBtStatus();
+};
+
+function updateBtStatus() {
+  const el = document.getElementById('bt-status');
+  if (!el) return;
+  if (niimbotPrinter.connected) {
+    el.innerHTML = `<span style="color:#4a8e5a;font-weight:700;">● 已連線</span> <span style="color:#888;">(${niimbotPrinter.device?.name || '精臣'})</span>`;
+  } else {
+    el.innerHTML = `<span style="color:#c9a84c;">○ 未連線</span>`;
+  }
+  const btn = document.getElementById('bt-connect-btn');
+  if (btn) btn.textContent = niimbotPrinter.connected ? '🔌 中斷連線' : '🔵 連接藍牙';
+  const printBtn = document.getElementById('bt-print-btn');
+  if (printBtn) {
+    printBtn.disabled = !niimbotPrinter.connected;
+    printBtn.style.opacity = niimbotPrinter.connected ? '1' : '.5';
+    printBtn.style.cursor = niimbotPrinter.connected ? 'pointer' : 'not-allowed';
+  }
+}
+
+async function btToggleConnect() {
+  if (niimbotPrinter.connected) {
+    niimbotPrinter.disconnect();
+    toast('已中斷連線', 'ok');
+    updateBtStatus();
+    return;
+  }
+  try {
+    btAppendLog('--- 開始連線 ---');
+    await niimbotPrinter.connect();
+    toast('✓ 標籤機已連線', 'ok');
+  } catch (e) {
+    btAppendLog('✗ ' + e.message);
+    toast('連線失敗: ' + e.message, 'error');
+  }
+  updateBtStatus();
+}
+
+async function btPrintCurrent() {
+  if (!niimbotPrinter.connected) { toast('請先連線', 'warn'); return; }
+  const copies = Math.max(1, Math.min(50, parseInt(document.getElementById('label-copies').value) || 1));
+  const density = parseInt(document.getElementById('bt-density')?.value || 3);
+  try {
+    btAppendLog('--- 列印目前這張 ---');
+    const canvas = document.createElement('canvas');
+    await drawLabel(canvas, labelPrintProducts[labelPrintCurrentIdx]);
+    await niimbotPrinter.print(canvas, copies, density);
+    toast(`✓ 已送出 ${copies} 張`, 'ok');
+  } catch (e) {
+    btAppendLog('✗ ' + e.message);
+    toast('列印失敗: ' + e.message, 'error');
+  }
+}
+
+async function btPrintAll() {
+  if (!niimbotPrinter.connected) { toast('請先連線', 'warn'); return; }
+  const copies = Math.max(1, Math.min(50, parseInt(document.getElementById('label-copies').value) || 1));
+  const density = parseInt(document.getElementById('bt-density')?.value || 3);
+  try {
+    btAppendLog(`--- 列印全部 (${labelPrintProducts.length} 項 × ${copies}) ---`);
+    for (let i = 0; i < labelPrintProducts.length; i++) {
+      const p = labelPrintProducts[i];
+      btAppendLog(`印 ${i+1}/${labelPrintProducts.length}: ${p.name}`);
+      const canvas = document.createElement('canvas');
+      await drawLabel(canvas, p);
+      await niimbotPrinter.print(canvas, copies, density);
+      await niimbotPrinter.sleep(500);
+    }
+    toast('✓ 全部送出', 'ok');
+  } catch (e) {
+    btAppendLog('✗ ' + e.message);
+    toast('列印失敗: ' + e.message, 'error');
+  }
+}
+
 function toast(msg, type='success') {
   const t = document.createElement('div');
   t.textContent = msg;
