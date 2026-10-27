@@ -2862,11 +2862,16 @@ let labelEditMode = false;
 // 根據商品 + 選的來源決定條碼內容
 function getLabelBarcodeValue(p) {
   const source = document.getElementById('label-barcode-source')?.value || 'auto';
-  if (source === 'barcode') return (p.barcode || '').trim();
-  if (source === 'sku')     return (p.sku || '').trim();
-  if (source === 'id')      return (p.id || '').toString().slice(-10);
+  // 任何值（string / number / null / undefined）都安全轉成字串
+  const s = (v) => (v == null || v === '') ? '' : String(v).trim();
+  const barcode = s(p.barcode);
+  const sku     = s(p.sku);
+  const id10    = s(p.id).slice(-10);
+  if (source === 'barcode') return barcode;
+  if (source === 'sku')     return sku;
+  if (source === 'id')      return id10;
   // auto
-  return (p.barcode || p.sku || (p.id || '').toString().slice(-10)).trim();
+  return barcode || sku || id10;
 }
 
 // 文字自動斷行（最多 N 行，超過加 …）
