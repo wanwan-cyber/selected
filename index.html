@@ -2291,12 +2291,12 @@
 
 <!-- 🏷 商品標籤列印 Modal (v2.9.50) -->
 <div class="modal-overlay" id="label-print-modal">
-  <div class="modal-card" style="max-width:680px;">
+  <div class="modal" style="max-width:680px;display:flex;flex-direction:column;">
     <div class="modal-head">
       <h3>🏷 列印商品標籤</h3>
       <button class="modal-close" onclick="closeModal('label-print-modal')">×</button>
     </div>
-    <div class="modal-body">
+    <div class="modal-body" style="overflow-y:auto;flex:1;min-height:0;">
       <!-- 商品切換清單 -->
       <div id="label-print-list" style="margin-bottom:14px;"></div>
 
@@ -3407,13 +3407,31 @@ class NiimbotPrinter {
     if (!this.connected) throw new Error('印表機未連線');
     this.log(`開始列印 (${copies} 份, 密度 ${density})`);
     this.log(`原始 canvas: ${canvas.width}×${canvas.height}`);
-    // ★ v2.9.54 B1 實際解析度為 8 dot/mm，40×20mm → 320×160 pixels
-    // Canvas 內部可能是 2× (640×320) 為了預覽清楚，列印時要降回實際尺寸
+    // B1 40×20mm → 320×160 pixels (8 dot/mm)
     const PRINT_W = 320, PRINT_H = 160;
-    const printCanvas = this.resizeForPrinter(canvas, PRINT_W, PRINT_H);
-    this.log(`印表機用 canvas: ${PRINT_W}×${PRINT_H}`);
-    const bmp = this.canvasToBitmap(printCanvas);
-    this.log(`bitmap: ${bmp.width}×${bmp.height}, ${bmp.rows[0].length} bytes/row`);
+    // ★ v2.9.56 把 printCanvas 加到 DOM 避免某些 Chrome 下 off-screen raster 失敗
+    const printCanvas = document.createElement('canvas');
+    printCanvas.width = PRINT_W;
+    printCanvas.height = PRINT_H;
+    printCanvas.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;';
+    document.body.appendChild(printCanvas);
+    try {
+      const pctx = printCanvas.getContext('2d');
+      pctx.imageSmoothingEnabled = false;
+      pctx.fillStyle = '#fff';
+      pctx.fillRect(0, 0, PRINT_W, PRINT_H);
+      pctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, PRINT_W, PRINT_H);
+      this.log(`印表機 canvas: ${PRINT_W}×${PRINT_H}`);
+      const bmp = this.canvasToBitmap(printCanvas);
+      this.log(`bitmap: ${bmp.width}×${bmp.height}, ${bmp.rows[0].length} bytes/row`);
+      await this._printBitmap(bmp, copies, density);
+    } finally {
+      printCanvas.remove();
+    }
+    return;
+  }
+
+  async _printBitmap(bmp, copies, density) {
 
     // 1. 設定密度
     await this.sendPacket(0x21, [density]);
@@ -3542,19 +3560,35 @@ async function btToggleConnect() {
   updateBtStatus();
 }
 
+// Helper: 建一個 DOM-attached 的 hidden canvas 讓 Chrome 真的 raster
+async function makeStagedLabelCanvas(product) {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;pointer-events:none;';
+  document.body.appendChild(canvas);
+  try {
+    await drawLabel(canvas, product);
+    return canvas;
+  } catch (e) {
+    canvas.remove();
+    throw e;
+  }
+}
+
 async function btPrintCurrent() {
   if (!niimbotPrinter.connected) { toast('請先連線', 'warn'); return; }
   const copies = Math.max(1, Math.min(50, parseInt(document.getElementById('label-copies').value) || 1));
   const density = parseInt(document.getElementById('bt-density')?.value || 3);
+  let canvas = null;
   try {
     btAppendLog('--- 列印目前這張 ---');
-    const canvas = document.createElement('canvas');
-    await drawLabel(canvas, labelPrintProducts[labelPrintCurrentIdx]);
+    canvas = await makeStagedLabelCanvas(labelPrintProducts[labelPrintCurrentIdx]);
     await niimbotPrinter.print(canvas, copies, density);
     toast(`✓ 已送出 ${copies} 張`, 'ok');
   } catch (e) {
     btAppendLog('✗ ' + e.message);
     toast('列印失敗: ' + e.message, 'error');
+  } finally {
+    if (canvas) canvas.remove();
   }
 }
 
@@ -3567,9 +3601,13 @@ async function btPrintAll() {
     for (let i = 0; i < labelPrintProducts.length; i++) {
       const p = labelPrintProducts[i];
       btAppendLog(`印 ${i+1}/${labelPrintProducts.length}: ${p.name}`);
-      const canvas = document.createElement('canvas');
-      await drawLabel(canvas, p);
-      await niimbotPrinter.print(canvas, copies, density);
+      let canvas = null;
+      try {
+        canvas = await makeStagedLabelCanvas(p);
+        await niimbotPrinter.print(canvas, copies, density);
+      } finally {
+        if (canvas) canvas.remove();
+      }
       await niimbotPrinter.sleep(500);
     }
     toast('✓ 全部送出', 'ok');
