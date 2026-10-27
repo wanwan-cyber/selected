@@ -3432,24 +3432,33 @@ class NiimbotPrinter {
   }
 
   async _printBitmap(bmp, copies, density) {
+    // ★ v2.9.57 根據 niimbluelib 協議修正順序 + 空行封包格式
 
-    // 1. 設定密度
+    // 1. Heartbeat 先握手
+    await this.sendPacket(0xDC, [0x01]);
+    await this.sleep(100);
+
+    // 2. 設定密度
     await this.sendPacket(0x21, [density]);
     await this.sleep(60);
 
-    // 2. 設定紙張類型 (1 = gap/間隙紙, 2 = black mark, 3 = continuous)
+    // 3. 設定紙張類型 (1 = gap/間隙紙)
     await this.sendPacket(0x23, [1]);
     await this.sleep(60);
 
-    // 3. 開始列印任務 (0x01, total pages)
+    // 4. 開始列印任務 (0x01)
     await this.sendPacket(0x01, [1]);
     await this.sleep(60);
 
-    // 4. Print clear
+    // 5. Allow print clear (V1 需要)
     await this.sendPacket(0x20, [1]);
     await this.sleep(60);
 
-    // 5. 設定紙張尺寸：height(BE 16) + width(BE 16)
+    // 6. 開始頁面 (0x03) ★ 必須在 SetDimension 之前
+    await this.sendPacket(0x03, [1]);
+    await this.sleep(80);
+
+    // 7. 設定紙張尺寸：height(BE 16) + width(BE 16)
     const w = bmp.width, h = bmp.height;
     await this.sendPacket(0x13, [
       (h >> 8) & 0xFF, h & 0xFF,
@@ -3457,30 +3466,27 @@ class NiimbotPrinter {
     ]);
     await this.sleep(60);
 
-    // 6. 設定數量
+    // 8. 設定數量
     await this.sendPacket(0x15, [
       (copies >> 8) & 0xFF, copies & 0xFF,
     ]);
-    await this.sleep(60);
-
-    // 7. 開始頁面 (0x03)
-    await this.sendPacket(0x03, [1]);
     await this.sleep(80);
 
-    // 8. 送 bitmap 每行
+    // 9. 送 bitmap 每行
     this.log(`送出 ${bmp.rows.length} 行 bitmap...`);
+    let emptyCount = 0, dataCount = 0;
     for (let y = 0; y < bmp.rows.length; y++) {
       const row = bmp.rows[y];
       const empty = row.every(b => b === 0);
       if (empty) {
-        // 空行 0x84
+        // ★ 空行 0x84 — 正確格式只有 3 bytes: row_hi, row_lo, repeat
         await this.sendPacket(0x84, [
           (y >> 8) & 0xFF, y & 0xFF,
-          0, 0, 0, 1,
+          1,
         ]);
+        emptyCount++;
       } else {
         const [c1, c2, c3] = this.countBits3(row);
-        // 0x85 = bitmap row
         const data = [
           (y >> 8) & 0xFF, y & 0xFF,
           c1 & 0xFF, c2 & 0xFF, c3 & 0xFF,
@@ -3488,17 +3494,19 @@ class NiimbotPrinter {
           ...row,
         ];
         await this.sendPacket(0x85, data);
+        dataCount++;
       }
       // 讓 BLE buffer 不堵塞
       if (y % 8 === 7) await this.sleep(10);
     }
-    await this.sleep(200);
-
-    // 9. 結束頁面 (0xE3)
-    await this.sendPacket(0xE3, [1]);
+    this.log(`bitmap 送出: ${dataCount} 內容行 + ${emptyCount} 空行`);
     await this.sleep(300);
 
-    // 10. 結束列印 (0xF3)
+    // 10. 結束頁面 (0xE3)
+    await this.sendPacket(0xE3, [1]);
+    await this.sleep(500);
+
+    // 11. 結束列印 (0xF3)
     await this.sendPacket(0xF3, [1]);
     this.log('✓ 列印完成');
   }
