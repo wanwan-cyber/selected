@@ -3349,6 +3349,7 @@ class NiimbotPrinter {
     const px = imageData.data;
     const bpr = Math.ceil(w / 8);
     const rows = [];
+    let totalBlack = 0;
     for (let y = 0; y < h; y++) {
       const row = new Uint8Array(bpr);
       for (let x = 0; x < w; x++) {
@@ -3356,11 +3357,29 @@ class NiimbotPrinter {
         const gray = px[i] * 0.299 + px[i+1] * 0.587 + px[i+2] * 0.114;
         if (gray < 128) {
           row[Math.floor(x / 8)] |= (1 << (7 - (x % 8)));
+          totalBlack++;
         }
       }
       rows.push(row);
     }
+    this.log(`bitmap stats: ${totalBlack} 黑色像素 / ${w*h} 總像素 (${(totalBlack/(w*h)*100).toFixed(1)}%)`);
     return { width: w, height: h, rows };
+  }
+
+  // 把 canvas 縮放到印表機實際解析度
+  resizeForPrinter(sourceCanvas, targetW, targetH) {
+    const printCanvas = document.createElement('canvas');
+    printCanvas.width = targetW;
+    printCanvas.height = targetH;
+    const pctx = printCanvas.getContext('2d');
+    // 列印用：關閉平滑讓邊緣銳利（1-bit 友善）
+    pctx.imageSmoothingEnabled = false;
+    pctx.fillStyle = '#fff';
+    pctx.fillRect(0, 0, targetW, targetH);
+    pctx.drawImage(sourceCanvas,
+      0, 0, sourceCanvas.width, sourceCanvas.height,
+      0, 0, targetW, targetH);
+    return printCanvas;
   }
 
   // 計算一行三段的 "1" bit 數量（Niimbot 需要）
@@ -3382,7 +3401,13 @@ class NiimbotPrinter {
   async print(canvas, copies = 1, density = 3) {
     if (!this.connected) throw new Error('印表機未連線');
     this.log(`開始列印 (${copies} 份, 密度 ${density})`);
-    const bmp = this.canvasToBitmap(canvas);
+    this.log(`原始 canvas: ${canvas.width}×${canvas.height}`);
+    // ★ v2.9.54 B1 實際解析度為 8 dot/mm，40×20mm → 320×160 pixels
+    // Canvas 內部可能是 2× (640×320) 為了預覽清楚，列印時要降回實際尺寸
+    const PRINT_W = 320, PRINT_H = 160;
+    const printCanvas = this.resizeForPrinter(canvas, PRINT_W, PRINT_H);
+    this.log(`印表機用 canvas: ${PRINT_W}×${PRINT_H}`);
+    const bmp = this.canvasToBitmap(printCanvas);
     this.log(`bitmap: ${bmp.width}×${bmp.height}, ${bmp.rows[0].length} bytes/row`);
 
     // 1. 設定密度
