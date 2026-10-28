@@ -3408,9 +3408,12 @@ class NiimbotPrinter {
     if (!this.connected) throw new Error('印表機未連線');
     this.log(`開始列印 (${copies} 份, 密度 ${density})`);
     this.log(`原始 canvas: ${canvas.width}×${canvas.height}`);
-    // B1 40×20mm → 320×160 pixels (8 dot/mm)
-    const PRINT_W = 320, PRINT_H = 160;
-    // ★ v2.9.56 把 printCanvas 加到 DOM 避免某些 Chrome 下 off-screen raster 失敗
+    // ★ v2.9.61 B1 熱頭原生寬度 384 pixels (50mm × 8 dot/mm = 400px，實際熱頭 384)
+    //    以前只送 320 寬可能被 printer 當畸形資料 skip
+    //    改成畫到 384 寬，標籤內容靠左，右邊 pad 64px 空白
+    const CONTENT_W = 320;    // 標籤實際內容寬 (40mm × 8)
+    const PRINT_W = 384;       // B1 熱頭 bitmap 寬度
+    const PRINT_H = 160;       // 20mm × 8
     const printCanvas = document.createElement('canvas');
     printCanvas.width = PRINT_W;
     printCanvas.height = PRINT_H;
@@ -3421,8 +3424,9 @@ class NiimbotPrinter {
       pctx.imageSmoothingEnabled = false;
       pctx.fillStyle = '#fff';
       pctx.fillRect(0, 0, PRINT_W, PRINT_H);
-      pctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, PRINT_W, PRINT_H);
-      this.log(`印表機 canvas: ${PRINT_W}×${PRINT_H}`);
+      // 內容靠左畫，寬 CONTENT_W (320)，右側 64px 保留空白
+      pctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, CONTENT_W, PRINT_H);
+      this.log(`印表機 canvas: ${PRINT_W}×${PRINT_H} (bitmap pad 到 B1 原生寬度)`);
       const bmp = this.canvasToBitmap(printCanvas);
       this.log(`bitmap: ${bmp.width}×${bmp.height}, ${bmp.rows[0].length} bytes/row`);
       await this._printBitmap(bmp, copies, density);
@@ -3468,9 +3472,10 @@ class NiimbotPrinter {
     ]);
     await this.sleep(80);
 
-    // 7. 設定數量 — B1 用 1 byte（Python niimprint 實測版本）
-    //    若送 2 bytes 可能被解讀成「印 0 張」導致 feed 一張但不印
-    await this.sendPacket(0x15, [copies & 0xFF]);
+    // 7. 設定數量 — 2 bytes BE (uint16)
+    await this.sendPacket(0x15, [
+      (copies >> 8) & 0xFF, copies & 0xFF,
+    ]);
     await this.sleep(100);
 
     // 9. 送 bitmap 每行
