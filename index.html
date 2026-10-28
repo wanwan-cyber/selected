@@ -4831,7 +4831,6 @@ function renderProductsTable() {
             ? `<button onclick="convertPreorderToRegular('${p.id}')" title="貨到了，轉為一般商品並輸入庫存" style="width:32px;height:32px;padding:0;background:#8B6F47;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">📦</button>`
             : `<button onclick="convertRegularToPreorder('${p.id}')" title="轉為預購商品（可接受預購不看庫存）" style="width:32px;height:32px;padding:0;background:#fff;color:#8B6F47;border:1px solid #8B6F47;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🎀</button>`}
           <button onclick="openProductModal('${p.id}')" title="編輯商品" style="width:32px;height:32px;padding:0;background:var(--primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">✏️</button>
-          <button onclick="openLabelPrintModal(['${p.id}'])" title="印標籤" style="width:32px;height:32px;padding:0;background:#fff;color:#8B6F47;border:1px solid #8B6F47;border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🏷</button>
           <button onclick="deleteProduct('${p.id}')" title="刪除商品" style="width:32px;height:32px;padding:0;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;font-size:14px;line-height:1;">🗑️</button>
         </div>
       </td>
@@ -5738,7 +5737,6 @@ function renderPmBulkBar() {
     <button onclick="pmBulkClearAll()" class="btn btn-outline btn-sm" style="font-size:12px;">清空</button>
     <button onclick="pmBulkApplyFeatured(true)" class="btn btn-sm" style="background:#c9a84c;color:#fff;border:none;font-weight:800;">⭐ 設為強推</button>
     <button onclick="pmBulkApplyFeatured(false)" class="btn btn-outline btn-sm" style="border-color:#c9a84c;color:#c9a84c;font-weight:700;">☆ 取消強推</button>
-    <button onclick="openLabelPrintModal(Array.from(pmBulkSelected))" class="btn btn-sm" style="background:#8B6F47;color:#fff;border:none;font-weight:800;">🏷 印標籤</button>
   `;
 }
 
