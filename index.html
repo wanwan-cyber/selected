@@ -2361,17 +2361,42 @@
         </details>
       </div>
 
-      <!-- 使用說明 -->
-      <div style="margin-top:10px;padding:8px 12px;background:#fef8ea;border-radius:8px;border:1px solid #f0e0b8;font-size:11px;color:#8a6d2a;line-height:1.7;">
-        <b>💡 兩種列印方式：</b><br>
-        1. <b>藍牙直連（上方）</b>：Chrome 直接送到印表機，不用切換 app<br>
-        2. <b>下載 PNG（下方）</b>：精臣 app 匯入圖片列印，備用方案
+      <!-- 📄 CSV 匯出主流程 (v2.9.62) -->
+      <div style="margin-top:12px;padding:12px 14px;background:linear-gradient(135deg,#f0faf0,#e8f5e8);border-radius:10px;border:1px solid #b8dfb8;">
+        <div style="font-size:13px;font-weight:800;color:#2a7a2a;margin-bottom:8px;">
+          📄 匯出 CSV → 精臣 app 批次列印（推薦）
+        </div>
+        <button class="btn btn-sm" onclick="downloadLabelsCsv()"
+                style="background:#4a9a4a;color:#fff;border:none;font-weight:700;">
+          📥 下載 CSV（含「每項印幾張」份數）
+        </button>
+        <details style="margin-top:8px;font-size:11px;color:#4a7a4a;">
+          <summary style="cursor:pointer;font-weight:600;">▼ 精臣 app 使用步驟（第一次設定需要幾分鐘）</summary>
+          <ol style="margin:8px 0 0 20px;line-height:1.9;">
+            <li>把 CSV 用 AirDrop / LINE / 郵件 傳到 iPhone</li>
+            <li>精臣 app → 建立 <b>40×20mm</b> 標籤模板</li>
+            <li>加 3 個元素：<b>文本（商品名）</b>、<b>文本（價格）</b>、<b>條碼</b></li>
+            <li>點每個元素 → <b>資料變數</b> → 綁定對應欄位</li>
+            <li>點下方 <b>「資料來源」</b> → 匯入剛才的 CSV → 一次批次列印</li>
+            <li>以後只要重複步驟 1 + 5（模板不用再建）</li>
+          </ol>
+        </details>
       </div>
+
+      <!-- 其他列印方式（備用） -->
+      <details style="margin-top:10px;font-size:11px;color:#666;">
+        <summary style="cursor:pointer;color:#888;">▼ 其他列印方式（備用）</summary>
+        <div style="margin-top:8px;padding:8px 12px;background:#fafafa;border-radius:8px;border:1px solid #e8e8e8;line-height:1.7;">
+          • <b>下載 PNG 單張列印</b>（下方「下載此張 / 全部下載」）→ 精臣 app「圖片」匯入列印<br>
+          • <b>藍牙直連</b>（上方區塊）→ ⚠️ 實驗性功能，B1 的協議還在調整中，目前可連線但列印不穩定
+        </div>
+      </details>
     </div>
     <div class="modal-foot">
       <button class="btn btn-outline" onclick="closeModal('label-print-modal')">取消</button>
-      <button class="btn btn-outline" onclick="downloadCurrentLabelPng()">📥 下載此張</button>
-      <button class="btn btn-outline" onclick="downloadAllLabelPngs()">📥 全部下載</button>
+      <button class="btn btn-outline" onclick="downloadCurrentLabelPng()">📥 PNG 此張</button>
+      <button class="btn btn-outline" onclick="downloadAllLabelPngs()">📥 PNG 全部</button>
+      <button class="btn btn-primary" onclick="downloadLabelsCsv()">📄 匯出 CSV</button>
     </div>
   </div>
 </div>
@@ -3174,6 +3199,40 @@ async function downloadCurrentLabelPng() {
 }
 
 // 全部下載（每項 × copies 張）
+// v2.9.62 匯出 CSV 給精臣 app「資料來源」匯入
+async function downloadLabelsCsv() {
+  if (!labelPrintProducts.length) { toast('沒有商品可匯出', 'warn'); return; }
+  const copies = Math.max(1, Math.min(50, parseInt(document.getElementById('label-copies').value) || 1));
+  const rows = [];
+  rows.push(['商品名', '價格', '條碼']);
+  for (const p of labelPrintProducts) {
+    const name = p.name || '';
+    const price = `NT$${Number(p.price) || 0}`;
+    const barcode = getLabelBarcodeValue(p);
+    for (let c = 0; c < copies; c++) {
+      rows.push([name, price, barcode]);
+    }
+  }
+  const csvEscape = (v) => {
+    const s = String(v == null ? '' : v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  // BOM 讓 Excel/精臣 app 讀中文不亂碼
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  a.download = `wanwan_labels_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+  toast(`✓ 已匯出 CSV (${rows.length - 1} 筆)`, 'ok');
+}
+
 async function downloadAllLabelPngs() {
   const copies = Math.max(1, Math.min(50, parseInt(document.getElementById('label-copies').value) || 1));
   const total = labelPrintProducts.length * copies;
