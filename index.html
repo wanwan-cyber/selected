@@ -3334,14 +3334,15 @@ class NiimbotPrinter {
     if (pkt.length < 24) {
       this.log('→ ' + Array.from(pkt).map(b => b.toString(16).padStart(2,'0')).join(' '));
     }
+    // ★ v2.9.58 一律用 writeValue (with response) 更可靠，避免 BLE buffer 爆
     try {
+      await this.writeChar.writeValue(pkt);
+    } catch (e) {
       if (this.writeChar.properties.writeWithoutResponse) {
         await this.writeChar.writeValueWithoutResponse(pkt);
       } else {
-        await this.writeChar.writeValue(pkt);
+        throw e;
       }
-    } catch (e) {
-      await this.writeChar.writeValue(pkt);
     }
   }
 
@@ -3432,45 +3433,46 @@ class NiimbotPrinter {
   }
 
   async _printBitmap(bmp, copies, density) {
-    // ★ v2.9.57 根據 niimbluelib 協議修正順序 + 空行封包格式
+    // ★ v2.9.58 對齊 Python niimprint 實測過 B1 的順序
+    // 拿掉 heartbeat (0xDC) 跟 allowPrintClear (0x20) — 這兩個是 V1 才需要
 
-    // 1. Heartbeat 先握手
-    await this.sendPacket(0xDC, [0x01]);
-    await this.sleep(100);
+    // ★ v2.9.59 B1 用 V2 協議：setDimension 需要 6 bytes (多 2 bytes)
+    // 另外加回 allow_print_clear（niimblue 的 V2 範例裡有）
 
-    // 2. 設定密度
+    // 1. 設定密度
     await this.sendPacket(0x21, [density]);
-    await this.sleep(60);
+    await this.sleep(80);
 
-    // 3. 設定紙張類型 (1 = gap/間隙紙)
+    // 2. 設定紙張類型 (1 = gap/間隙紙)
     await this.sendPacket(0x23, [1]);
-    await this.sleep(60);
+    await this.sleep(80);
 
-    // 4. 開始列印任務 (0x01)
+    // 3. 開始列印任務 (0x01)
     await this.sendPacket(0x01, [1]);
-    await this.sleep(60);
+    await this.sleep(80);
 
-    // 5. Allow print clear (V1 需要)
+    // 4. Allow print clear (B1 V2 確實有送這個)
     await this.sendPacket(0x20, [1]);
-    await this.sleep(60);
+    await this.sleep(80);
 
-    // 6. 開始頁面 (0x03) ★ 必須在 SetDimension 之前
+    // 5. 開始頁面 (0x03)
     await this.sendPacket(0x03, [1]);
     await this.sleep(80);
 
-    // 7. 設定紙張尺寸：height(BE 16) + width(BE 16)
+    // 6. 設定紙張尺寸：V2 需要 6 bytes — height(BE 16) + width(BE 16) + 2 extra bytes
     const w = bmp.width, h = bmp.height;
     await this.sendPacket(0x13, [
       (h >> 8) & 0xFF, h & 0xFF,
       (w >> 8) & 0xFF, w & 0xFF,
+      0x00, 0x00,
     ]);
-    await this.sleep(60);
+    await this.sleep(80);
 
-    // 8. 設定數量
+    // 7. 設定數量
     await this.sendPacket(0x15, [
       (copies >> 8) & 0xFF, copies & 0xFF,
     ]);
-    await this.sleep(80);
+    await this.sleep(100);
 
     // 9. 送 bitmap 每行
     this.log(`送出 ${bmp.rows.length} 行 bitmap...`);
@@ -3496,17 +3498,17 @@ class NiimbotPrinter {
         await this.sendPacket(0x85, data);
         dataCount++;
       }
-      // 讓 BLE buffer 不堵塞
-      if (y % 8 === 7) await this.sleep(10);
+      // 讓 BLE buffer 不堵塞；非空行多等一點讓印表機處理
+      await this.sleep(empty ? 2 : 8);
     }
     this.log(`bitmap 送出: ${dataCount} 內容行 + ${emptyCount} 空行`);
     await this.sleep(300);
 
-    // 10. 結束頁面 (0xE3)
+    // 11. 結束頁面 (0xE3) — 給 B1 充足時間印完當前 page
     await this.sendPacket(0xE3, [1]);
-    await this.sleep(500);
+    await this.sleep(2000);
 
-    // 11. 結束列印 (0xF3)
+    // 12. 結束列印 (0xF3)
     await this.sendPacket(0xF3, [1]);
     this.log('✓ 列印完成');
   }
