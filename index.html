@@ -8483,12 +8483,14 @@ function markChanged() {
 }
 
 // 上傳資料
-async function syncUpload() {
+async function syncUpload(force = false) {
   if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  syncState.uploadTimer = null; // ★ 計時器已觸發，清掉，之後的定時下拉才會恢復（不然別台的新資料永遠進不來）
   updateSyncStatus('uploading');
   try {
     const payload = {
       action: 'sync',
+      force: force === true, // ★ v2.9.51：確定要刪除雲端資料時才帶 true
       source: syncState.deviceId,
       data: {
         products: products,
@@ -8508,6 +8510,11 @@ async function syncUpload() {
     });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const result = await response.json();
+    // ★ v2.9.51 同步保護：雲端擋下了會讓資料變少的上傳
+    if (result && result.error === 'guard') {
+      await handleSyncGuard(result);
+      return;
+    }
     if (!result.ok) {
       throw new Error(result.error || `後端無錯誤訊息，完整回應：${JSON.stringify(result).slice(0, 200)}`);
     }
@@ -8519,6 +8526,55 @@ async function syncUpload() {
     syncState.lastError = err.message;
     updateSyncStatus('error');
   }
+}
+
+// ★ v2.9.51 同步保護：雲端有、這台沒有的資料 → 問要「加回來」還是「刪掉」
+async function handleSyncGuard(g) {
+  const np = (g.missingProducts || []).length;
+  const nt = (g.missingTransactions || []).length;
+  const names = (g.missingProductNames || []).join('、') + (np > 8 ? '…' : '');
+  const msg = '⚠️ 雲端有這台裝置沒有的資料：\n'
+    + (np ? `・商品 ${np} 件（${names}）\n` : '')
+    + (nt ? `・銷售紀錄 ${nt} 筆\n` : '')
+    + '\n通常是別台裝置剛新增的。\n\n'
+    + '按「確定」＝把它們加回這台裝置（建議）\n'
+    + '按「取消」＝我是故意刪掉的，從雲端刪除';
+  if (confirm(msg)) {
+    try {
+      updateSyncStatus('downloading');
+      const res = await fetch(appSettings.syncUrl + '?action=fetch&t=' + Date.now(), { method: 'GET' });
+      const r = await res.json();
+      if (!r.ok) throw new Error(r.error || '讀取雲端失敗');
+      const cloud = r.data || {};
+      const addBack = (local, cloudArr, ids) => {
+        const want = new Set((ids || []).map(String));
+        const have = new Set(local.map(x => String(x.id)));
+        (cloudArr || []).forEach(o => { if (o && want.has(String(o.id)) && !have.has(String(o.id))) local.push(o); });
+      };
+      addBack(products, cloud.products, g.missingProducts);
+      addBack(transactions, cloud.transactions, g.missingTransactions);
+      window.__isDownloadingSync = true; // 存檔時不要又觸發上傳
+      save('pos_products', products);
+      save('pos_transactions', transactions);
+      window.__isDownloadingSync = false;
+      renderCatBar(); renderProducts(); renderProductsTable(); calcTotals();
+      toast(`☁ 已把雲端的 ${np ? np + ' 件商品' : ''}${np && nt ? '、' : ''}${nt ? nt + ' 筆銷售' : ''}加回來`, 'success');
+      return syncUpload(); // 合併後重新上傳
+    } catch (e) {
+      window.__isDownloadingSync = false;
+      console.error('合併雲端資料失敗', e);
+      syncState.lastError = e.message;
+      updateSyncStatus('error');
+      toast('合併失敗：' + e.message + '（請重新整理 POS）', 'error');
+      return;
+    }
+  }
+  if (confirm(`確定要從雲端刪除${np ? ' ' + np + ' 件商品' : ''}${nt ? ' ' + nt + ' 筆銷售紀錄' : ''}嗎？\n（商品刪除前會自動備份）`)) {
+    return syncUpload(true);
+  }
+  syncState.lastError = '已暫停上傳（雲端有這台沒有的資料）';
+  updateSyncStatus('error');
+  toast('已暫停上傳，請重新整理 POS 載入最新資料', 'warn');
 }
 
 // 下載資料
