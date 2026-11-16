@@ -8475,6 +8475,7 @@ function stopSync() {
 // 標記資料變動，觸發延遲上傳
 function markChanged() {
   if (!appSettings.syncEnabled || !appSettings.syncUrl) return;
+  syncState.changeSeq = (syncState.changeSeq || 0) + 1; // ★ v2.9.60 記錄「本機有新變動」，下拉回來時用來判斷要不要丟掉
   if (syncState.uploadTimer) clearTimeout(syncState.uploadTimer);
   updateSyncStatus('pending');
   syncState.uploadTimer = setTimeout(() => {
@@ -8583,7 +8584,10 @@ async function syncDownload(showToast = false) {
   if (syncState.uploadTimer) return; // 有未上傳的變更，跳過下拉避免覆蓋
   if (syncState.status === 'uploading') return;
   updateSyncStatus('downloading');
-  window.__isDownloadingSync = true; // 標記：現在是下載中，save 別觸發 markChanged
+  // ★ v2.9.60 修：不要在等雲端回應的這段時間就鎖住 markChanged
+  //   以前這裡一開始就設 __isDownloadingSync=true，下拉要好幾秒，
+  //   這段時間結帳 → 不會上傳；雲端舊資料回來後又把剛結的帳、扣的庫存蓋掉。
+  const seqAtStart = syncState.changeSeq || 0;
   try {
     const response = await fetch(appSettings.syncUrl + '?action=fetch&t=' + Date.now(), {
       method: 'GET',
@@ -8593,6 +8597,14 @@ async function syncDownload(showToast = false) {
     if (!result.ok) {
       throw new Error(result.error || `後端無錯誤訊息，完整回應：${JSON.stringify(result).slice(0, 200)}`);
     }
+
+    // ★ v2.9.60 下拉期間本機有新變動（結帳、改庫存…）→ 這份雲端資料已過期，整份丟掉
+    //   本機的變動會照常上傳，下一輪（30 秒後）再下拉就會是對的
+    if ((syncState.changeSeq || 0) !== seqAtStart || syncState.uploadTimer || syncState.status === 'uploading') {
+      console.log('[sync] 下拉期間本機有變動，略過這次下拉以免覆蓋');
+      return;
+    }
+    window.__isDownloadingSync = true; // 只在「寫入本機」這段才標記，save 別觸發 markChanged
 
     const data = result.data || {};
     let changed = false;
