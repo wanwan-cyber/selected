@@ -8554,6 +8554,8 @@ async function handleSyncGuard(g) {
       };
       addBack(products, cloud.products, g.missingProducts);
       addBack(transactions, cloud.transactions, g.missingTransactions);
+      // ★ v2.9.60 加回來的交易放在最後面 → 「最近交易紀錄」只顯示前 20 筆會看不到。依時間重排（新的在前）
+      transactions.sort((x, y) => ((parseTxDate(y) || 0) - (parseTxDate(x) || 0)));
       window.__isDownloadingSync = true; // 存檔時不要又觸發上傳
       save('pos_products', products);
       save('pos_transactions', transactions);
@@ -11636,7 +11638,8 @@ function renderReport() {
   renderVendorStats();
 
   // Transactions table - with profit + actions（依 tab 過濾）
-  const tableSource = filterTxsBySource(transactions);
+  // ★ v2.9.60 依時間排序（新的在前），不靠陣列原本的順序
+  const tableSource = filterTxsBySource(transactions).slice().sort((x, y) => ((parseTxDate(y) || 0) - (parseTxDate(x) || 0)));
   document.getElementById('tx-tbody').innerHTML = tableSource.slice(0,20).map(t => {
     const profit = getTxProfit(t);
     const margin = t.total > 0 ? Math.round(profit / t.total * 100) : 0;
